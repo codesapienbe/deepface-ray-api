@@ -24,7 +24,7 @@ services:
           memory: 4G
         reservations:
           memory: 2G
-    shm_size: "2g"
+    shm_size: "4g"
 
   # Optional: Ray head node (for multi-node deployment)
   ray-head:

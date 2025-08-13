@@ -18,6 +18,8 @@ from .auth import auth_router, Role, User
 from .security import require_jwt_or_api_key, rate_limit
 from .errors import add_exception_handlers
 from .signing import add_hmac_signing_middleware
+from .reliability import CircuitBreaker, retry_call, log_to_dlq, CircuitOpenError
+from .security_headers import add_security_headers
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -29,6 +31,12 @@ try:
     num_workers = int(os.getenv("NUM_WORKERS", "4"))
 except Exception:
     num_workers = 4
+
+# Circuit breakers per operation
+cb_verify = CircuitBreaker(failure_threshold=3, recovery_timeout_sec=30, half_open_max_success=2)
+cb_analyze = CircuitBreaker(failure_threshold=3, recovery_timeout_sec=30, half_open_max_success=2)
+cb_find = CircuitBreaker(failure_threshold=3, recovery_timeout_sec=30, half_open_max_success=2)
+cb_embed = CircuitBreaker(failure_threshold=3, recovery_timeout_sec=30, half_open_max_success=2)
 
 
 def _parse_csv_env(key: str, default: str) -> List[str]:
@@ -83,6 +91,9 @@ app = FastAPI(
 
 # Register centralized error handlers
 add_exception_handlers(app)
+
+# Register security headers middleware
+add_security_headers(app)
 
 # Register HMAC signing middleware (no-op if disabled)
 add_hmac_signing_middleware(app)
@@ -157,9 +168,14 @@ async def get_available_models(
 ):
     """Get available DeepFace models and backends."""
     try:
-        models_future = get_deepface_models.remote()
-        models = ray.get(models_future)
+        def _call():
+            models_future = get_deepface_models.remote()
+            return ray.get(models_future)
+        models = retry_call(lambda: cb_analyze.call(_call), attempts=3)
         return models
+    except CircuitOpenError as e:
+        log_to_dlq("models", None, e)
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable")
     except Exception as e:
         logger.error(f"Error getting models: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting models: {str(e)}")
@@ -178,22 +194,26 @@ async def verify_faces(
         img1_bytes = await process_uploaded_file(img1)
         img2_bytes = await process_uploaded_file(img2)
 
-        # Get worker and execute task
-        worker = get_worker()
-        result_future = worker.verify_faces.remote(
-            img1_bytes=img1_bytes,
-            img2_bytes=img2_bytes,
-            model_name=request.model_name,
-            detector_backend=request.detector_backend,
-            distance_metric=request.distance_metric,
-            enforce_detection=request.enforce_detection,
-            align=request.align,
-            normalization=request.normalization
-        )
+        def _call():
+            worker = get_worker()
+            result_future = worker.verify_faces.remote(
+                img1_bytes=img1_bytes,
+                img2_bytes=img2_bytes,
+                model_name=request.model_name,
+                detector_backend=request.detector_backend,
+                distance_metric=request.distance_metric,
+                enforce_detection=request.enforce_detection,
+                align=request.align,
+                normalization=request.normalization
+            )
+            return ray.get(result_future)
 
-        result = ray.get(result_future)
+        result = retry_call(lambda: cb_verify.call(_call), attempts=2)
         return VerifyResponse(**result)
 
+    except CircuitOpenError as e:
+        log_to_dlq("verify", None, e)
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable")
     except ValueError as e:
         logger.warning(f"Validation error in face verification: {e}")
         raise HTTPException(status_code=422, detail=str(e))
@@ -213,21 +233,25 @@ async def analyze_face(
         # Process uploaded file
         img_bytes = await process_uploaded_file(image)
 
-        # Get worker and execute task
-        worker = get_worker()
-        result_future = worker.analyze_face.remote(
-            img_bytes=img_bytes,
-            actions=request.actions,
-            model_name=request.model_name,
-            detector_backend=request.detector_backend,
-            enforce_detection=request.enforce_detection,
-            align=request.align,
-            silent=request.silent
-        )
+        def _call():
+            worker = get_worker()
+            result_future = worker.analyze_face.remote(
+                img_bytes=img_bytes,
+                actions=request.actions,
+                model_name=request.model_name,
+                detector_backend=request.detector_backend,
+                enforce_detection=request.enforce_detection,
+                align=request.align,
+                silent=request.silent
+            )
+            return ray.get(result_future)
 
-        result = ray.get(result_future)
+        result = retry_call(lambda: cb_analyze.call(_call), attempts=2)
         return AnalyzeResponse(results=result)
 
+    except CircuitOpenError as e:
+        log_to_dlq("analyze", None, e)
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable")
     except ValueError as e:
         logger.warning(f"Validation error in face analysis: {e}")
         raise HTTPException(status_code=422, detail=str(e))
@@ -257,23 +281,27 @@ async def find_faces(
                 "image_bytes": db_bytes
             })
 
-        # Get worker and execute task
-        worker = get_worker()
-        result_future = worker.find_faces.remote(
-            img_bytes=query_bytes,
-            db_images=db_images,
-            model_name=request.model_name,
-            detector_backend=request.detector_backend,
-            distance_metric=request.distance_metric,
-            enforce_detection=request.enforce_detection,
-            align=request.align,
-            normalization=request.normalization,
-            silent=request.silent
-        )
+        def _call():
+            worker = get_worker()
+            result_future = worker.find_faces.remote(
+                img_bytes=query_bytes,
+                db_images=db_images,
+                model_name=request.model_name,
+                detector_backend=request.detector_backend,
+                distance_metric=request.distance_metric,
+                enforce_detection=request.enforce_detection,
+                align=request.align,
+                normalization=request.normalization,
+                silent=request.silent
+            )
+            return ray.get(result_future)
 
-        result = ray.get(result_future)
+        result = retry_call(lambda: cb_find.call(_call), attempts=2)
         return FindResponse(results=result)
 
+    except CircuitOpenError as e:
+        log_to_dlq("find", None, e)
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable")
     except ValueError as e:
         logger.warning(f"Validation error in face search: {e}")
         raise HTTPException(status_code=422, detail=str(e))
@@ -293,20 +321,24 @@ async def extract_face_embedding(
         # Process uploaded file
         img_bytes = await process_uploaded_file(image)
 
-        # Get worker and execute task
-        worker = get_worker()
-        result_future = worker.extract_embedding.remote(
-            img_bytes=img_bytes,
-            model_name=request.model_name,
-            detector_backend=request.detector_backend,
-            enforce_detection=request.enforce_detection,
-            align=request.align,
-            normalization=request.normalization
-        )
+        def _call():
+            worker = get_worker()
+            result_future = worker.extract_embedding.remote(
+                img_bytes=img_bytes,
+                model_name=request.model_name,
+                detector_backend=request.detector_backend,
+                enforce_detection=request.enforce_detection,
+                align=request.align,
+                normalization=request.normalization
+            )
+            return ray.get(result_future)
 
-        result = ray.get(result_future)
+        result = retry_call(lambda: cb_embed.call(_call), attempts=2)
         return ExtractEmbeddingResponse(**result)
 
+    except CircuitOpenError as e:
+        log_to_dlq("extract-embedding", None, e)
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable")
     except ValueError as e:
         logger.warning(f"Validation error in embedding extraction: {e}")
         raise HTTPException(status_code=422, detail=str(e))
@@ -339,8 +371,10 @@ async def batch_analyze_faces(
             )
             tasks.append(task)
 
-        # Wait for all tasks to complete
-        results = ray.get(tasks)
+        def _call():
+            return ray.get(tasks)
+
+        results = retry_call(lambda: cb_analyze.call(_call), attempts=2)
 
         return {
             "batch_results": [
@@ -350,6 +384,9 @@ async def batch_analyze_faces(
             "total_processed": len(results)
         }
 
+    except CircuitOpenError as e:
+        log_to_dlq("batch-analyze", None, e)
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable")
     except ValueError as e:
         logger.warning(f"Validation error in batch analysis: {e}")
         raise HTTPException(status_code=422, detail=str(e))

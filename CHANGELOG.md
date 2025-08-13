@@ -1,5 +1,11 @@
 # Changelog
 
+[1.6.0] - 2025-08-13
+
+### Added - P0 Input Security
+- Optional ClamAV malware scanning for uploaded images (`MALWARE_SCAN_ENABLED`, `CLAMAV_HOST`, `CLAMAV_PORT`).
+- Stricter image format validation against allowlist (JPEG, PNG, WEBP) based on actual file format.
+
 [1.5.0] - 2025-08-13
 
 ### Added - P0 Transport Security
