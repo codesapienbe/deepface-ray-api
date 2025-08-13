@@ -1,5 +1,13 @@
 # Changelog
 
+[1.8.1] - 2025-08-13
+
+### Added - P1 Developer Tooling
+- Added `pyproject.toml` to adopt uv for dependency management.
+  - Migrated pinned dependencies from `requirements.txt` to `[project.dependencies]`.
+  - Created `dev` dependency group for tooling (`ruff`).
+  - Compatible with `uv sync` and `uv run` workflows.
+
 [1.8.0] - 2025-08-13
 
 ### Added - P0 Ray Operations

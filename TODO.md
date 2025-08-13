@@ -130,6 +130,7 @@
 ### User Experience & Documentation
 
 - [ ] **Developer Experience**
+  - [x] Migrate to `pyproject.toml` and uv ✅ 2025-08-13
   - [ ] Create comprehensive API documentation
   - [ ] Add interactive API playground
   - [ ] Implement SDK for popular programming languages

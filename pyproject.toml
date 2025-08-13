@@ -1,0 +1,31 @@
+[project]
+name = "deepface-ray-api-enterprise"
+version = "1.8.1"
+description = "Enterprise-ready facial recognition API with Ray distributed computing"
+readme = "README.md"
+requires-python = ">=3.9,<3.12"
+dependencies = [
+  "fastapi==0.104.1",
+  "uvicorn[standard]==0.24.0",
+  "ray[default]==2.8.0",
+  "redis==5.0.4",
+  "deepface==0.0.79",
+  "tensorflow==2.15.0",
+  "opencv-python-headless==4.8.1.78",
+  "pillow==10.1.0",
+  "python-multipart==0.0.6",
+  "clamd==1.0.2",
+  "numpy==1.24.3",
+  "python-jose[cryptography]==3.3.0",
+  "passlib[bcrypt]==1.7.4",
+  "bcrypt==4.0.1",
+]
+
+[dependency-groups]
+dev = [
+  "ruff==0.8.1",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta" 
