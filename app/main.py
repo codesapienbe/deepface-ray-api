@@ -243,7 +243,7 @@ async def get_available_models(
 async def verify_faces(
     img1: UploadFile = File(...),
     img2: UploadFile = File(...),
-    request: VerifyRequest = VerifyRequest(),
+    request: VerifyRequest = Depends(VerifyRequest.as_form),
     current_user: User = Depends(require_jwt_or_api_key([Role.OPERATOR, Role.ADMIN])),
     _: None = Depends(rate_limit(limit=30, window_seconds=60, scope="verify"))
 ):
@@ -290,7 +290,7 @@ async def verify_faces(
 @app.post("/analyze", response_model=AnalyzeResponse)
 async def analyze_face(
     image: UploadFile = File(...),
-    request: AnalyzeRequest = AnalyzeRequest(),
+    request: AnalyzeRequest = Depends(AnalyzeRequest.as_form),
     current_user: User = Depends(require_jwt_or_api_key([Role.OPERATOR, Role.ADMIN, Role.VIEWER])),
     _: None = Depends(rate_limit(limit=60, window_seconds=60, scope="analyze"))
 ):
@@ -387,7 +387,7 @@ async def find_faces(
 @app.post("/extract-embedding", response_model=ExtractEmbeddingResponse)
 async def extract_face_embedding(
     image: UploadFile = File(...),
-    request: ExtractEmbeddingRequest = ExtractEmbeddingRequest(),
+    request: ExtractEmbeddingRequest = Depends(ExtractEmbeddingRequest.as_form),
     current_user: User = Depends(require_jwt_or_api_key([Role.OPERATOR, Role.ADMIN, Role.VIEWER])),
     _: None = Depends(rate_limit(limit=120, window_seconds=60, scope="embedding"))
 ):
@@ -424,7 +424,7 @@ async def extract_face_embedding(
 @app.post("/batch-analyze")
 async def batch_analyze_faces(
     images: List[UploadFile] = File(...),
-    request: AnalyzeRequest = AnalyzeRequest(),
+    request: AnalyzeRequest = Depends(AnalyzeRequest.as_form),
     current_user: User = Depends(require_jwt_or_api_key([Role.OPERATOR, Role.ADMIN])),
     _: None = Depends(rate_limit(limit=20, window_seconds=60, scope="batch-analyze"))
 ):

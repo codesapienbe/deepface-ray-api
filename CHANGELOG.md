@@ -10,6 +10,7 @@
   - `make deps` delegates to `make install` (container image build).
 - Added `requests` to application dependencies to support the containerized test client.
 - Relaxed CSP for `/docs` and `/redoc` in `app/secheaders.py` to allow Swagger/ReDoc assets (JS/CSS/fonts) so API docs render correctly.
+- Fixed multipart form parsing for options on `/verify`, `/analyze`, `/batch-analyze`, and `/extract-embedding` by binding request models via `Depends(Model.as_form)`. This resolves 422 errors like `type_error.dict` when sending files with form fields.
 
 [1.8.3] - 2025-08-13
 

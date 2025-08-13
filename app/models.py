@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field, validator
 from typing import List, Optional, Dict, Any
 from enum import Enum
+from fastapi import Form
 
 class ModelName(str, Enum):
 	VGG_FACE = "VGG-Face"
@@ -50,6 +51,25 @@ class VerifyRequest(BaseModel):
 	align: bool = True
 	normalization: Normalization = Normalization.BASE
 
+	@classmethod
+	def as_form(
+		cls,
+		model_name: ModelName = Form(ModelName.VGG_FACE),
+		detector_backend: DetectorBackend = Form(DetectorBackend.OPENCV),
+		distance_metric: DistanceMetric = Form(DistanceMetric.COSINE),
+		enforce_detection: bool = Form(True),
+		align: bool = Form(True),
+		normalization: Normalization = Form(Normalization.BASE),
+	) -> "VerifyRequest":
+		return cls(
+			model_name=model_name,
+			detector_backend=detector_backend,
+			distance_metric=distance_metric,
+			enforce_detection=enforce_detection,
+			align=align,
+			normalization=normalization,
+		)
+
 class AnalyzeRequest(BaseModel):
 	actions: List[Action] = Field(default=[Action.AGE, Action.GENDER, Action.EMOTION, Action.RACE])
 	model_name: ModelName = ModelName.VGG_FACE
@@ -68,6 +88,24 @@ class AnalyzeRequest(BaseModel):
 			raise ValueError("A maximum of 4 actions are allowed")
 		return unique
 
+	@classmethod
+	def as_form(
+		cls,
+		model_name: ModelName = Form(ModelName.VGG_FACE),
+		detector_backend: DetectorBackend = Form(DetectorBackend.OPENCV),
+		enforce_detection: bool = Form(True),
+		align: bool = Form(True),
+		silent: bool = Form(False),
+	) -> "AnalyzeRequest":
+		# Note: actions not accepted via form for simplicity; defaults used
+		return cls(
+			model_name=model_name,
+			detector_backend=detector_backend,
+			enforce_detection=enforce_detection,
+			align=align,
+			silent=silent,
+		)
+
 class FindRequest(BaseModel):
 	model_name: ModelName = ModelName.VGG_FACE
 	detector_backend: DetectorBackend = DetectorBackend.OPENCV
@@ -76,6 +114,27 @@ class FindRequest(BaseModel):
 	align: bool = True
 	normalization: Normalization = Normalization.BASE
 	silent: bool = False
+
+	@classmethod
+	def as_form(
+		cls,
+		model_name: ModelName = Form(ModelName.VGG_FACE),
+		detector_backend: DetectorBackend = Form(DetectorBackend.OPENCV),
+		distance_metric: DistanceMetric = Form(DistanceMetric.COSINE),
+		enforce_detection: bool = Form(True),
+		align: bool = Form(True),
+		normalization: Normalization = Form(Normalization.BASE),
+		silent: bool = Form(False),
+	) -> "FindRequest":
+		return cls(
+			model_name=model_name,
+			detector_backend=detector_backend,
+			distance_metric=distance_metric,
+			enforce_detection=enforce_detection,
+			align=align,
+			normalization=normalization,
+			silent=silent,
+		)
 
 class VerifyResponse(BaseModel):
 	verified: bool
@@ -99,6 +158,23 @@ class ExtractEmbeddingRequest(BaseModel):
 	enforce_detection: bool = True
 	align: bool = True
 	normalization: Normalization = Normalization.BASE
+
+	@classmethod
+	def as_form(
+		cls,
+		model_name: ModelName = Form(ModelName.VGG_FACE),
+		detector_backend: DetectorBackend = Form(DetectorBackend.OPENCV),
+		enforce_detection: bool = Form(True),
+		align: bool = Form(True),
+		normalization: Normalization = Form(Normalization.BASE),
+	) -> "ExtractEmbeddingRequest":
+		return cls(
+			model_name=model_name,
+			detector_backend=detector_backend,
+			enforce_detection=enforce_detection,
+			align=align,
+			normalization=normalization,
+		)
 
 class ExtractEmbeddingResponse(BaseModel):
 	embedding: List[float]
