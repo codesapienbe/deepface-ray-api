@@ -12,8 +12,21 @@ def add_security_headers(app: FastAPI) -> None:
 		response.headers.setdefault("X-Content-Type-Options", "nosniff")
 		response.headers.setdefault("X-Frame-Options", "DENY")
 		response.headers.setdefault("Referrer-Policy", "no-referrer")
-		# Strict CSP for APIs (no resources permitted)
-		response.headers.setdefault("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; block-all-mixed-content")
+		# Relax CSP for documentation paths to allow UI assets
+		path = request.url.path
+		if path.startswith("/docs") or path.startswith("/redoc"):
+			response.headers.setdefault(
+				"Content-Security-Policy",
+				"default-src 'self'; "
+				"img-src 'self' data:; "
+				"style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
+				"script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com https://cdn.redoc.ly; "
+				"font-src 'self' data: https://fonts.gstatic.com; "
+				"connect-src 'self'; base-uri 'self'"
+			)
+		else:
+			# Strict CSP for APIs (no resources permitted)
+			response.headers.setdefault("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; block-all-mixed-content")
 		# Permissions Policy (lock down powerful features)
 		response.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
 		# HSTS only when TLS is enabled

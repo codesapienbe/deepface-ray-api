@@ -14,53 +14,43 @@ A scalable FastAPI application that provides a distributed API for DeepFace faci
 
 ## Quick Start
 
-### Using Docker (Recommended)
+### Using Makefile (Recommended)
 
 ```bash
 # Build the Docker image
-docker build -t deepface-ray-api .
+make install
 
-# Run the container
-docker run -p 8000:8000 deepface-ray-api
+# Start the container
+make start
+
+# Stop the container
+make stop
+
+# Lint and format checks
+make verify
+
+# Clean artifacts and stop containers
+make clean
 ```
 
-### Using Docker Compose
+### Environment
 
-- Default single-container mode (Ray local mode):
+- You can configure runtime via environment variables passed to `make start` by overriding in the shell, for example:
 
 ```bash
-docker-compose up -d
+# Example: override workers and max image size
+NUM_WORKERS=2 MAX_IMAGE_SIZE=1024 make start
 ```
 
-- Multi-node mode with a dedicated Ray head (enable the optional profile):
+- Key variables:
+  - `RAY_ADDRESS` (default: auto)
+  - `NUM_WORKERS` (default: 1)
+  - `MAX_IMAGE_SIZE` (default: 1024)
 
-```bash
-# Launch API + Ray head node
-docker-compose --profile multi-node up -d
 
-# Or, if you already have the stack up, start ray-head separately:
-docker-compose --profile multi-node up -d ray-head
+### Manual Installation (Optional)
 
-# Point the API to the head explicitly if overriding defaults
-# (compose already defaults RAY_ADDRESS to auto)
-RAY_ADDRESS=ray-head:6379 docker-compose --profile multi-node up -d deepface-api
-```
-
-### Manual Installation
-
-```bash
-# Install uv (if not installed)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Install project dependencies (from pyproject.toml)
-uv sync
-
-# Start Ray (optional, for distributed computing)
-ray start --head --port=6379
-
-# Run the application
-uv run python -m app.main
-```
+Containerized workflow via Makefile is recommended. If you still want to run locally, refer to the Dockerfile for required system packages and ensure Python 3.10 with all dependencies from `pyproject.toml` are installed.
 
 ## API Documentation
 
@@ -135,8 +125,8 @@ curl -X POST "http://localhost:8000/batch-analyze" \
 
 ### Environment Variables
 
-- `RAY_ADDRESS`: Ray cluster address (default: "auto"). When using the optional `ray-head` service via compose profile, set `RAY_ADDRESS=ray-head:6379`.
-- `NUM_WORKERS`: Number of DeepFace workers (default: 4)
+- `RAY_ADDRESS`: Ray cluster address (default: "auto"). For external clusters, set e.g. `RAY_ADDRESS=<head-ip>:6379`.
+- `NUM_WORKERS`: Number of DeepFace workers (default: 1)
 - `MAX_IMAGE_SIZE`: Maximum image size for processing (default: 1024)
 
 ### Request Parameters
@@ -153,25 +143,16 @@ All endpoints support various model configurations:
 
 Increase the number of workers:
 
-```python
-num_workers = 8  # Increase in app/main.py
+```bash
+NUM_WORKERS=8 make start
 ```
 
 ### Horizontal Scaling
 
-Add more machines to the Ray cluster:
+Connect to an external Ray head (advanced):
 
 ```bash
-# On additional machines
-ray start --address='<head-node-ip>:6379'
-```
-
-### Auto-scaling
-
-Ray can automatically scale based on workload:
-
-```bash
-ray up cluster-config.yaml
+RAY_ADDRESS=<head-node-ip>:6379 make start
 ```
 
 ## Python Client Example
@@ -227,19 +208,18 @@ The Ray-based architecture provides significant performance improvements:
 
 ### Common Issues
 
-1. **Ray not starting**: Ensure no other Ray processes are running
+1. **Ray not starting**: Use the container lifecycle commands
 
-   ```bash
-   ray stop
-   ray start --head --port=6379
-   ```
+```bash
+make stop
+make start
+```
 
 2. **Memory issues**: Reduce the number of workers or image size
 
-   ```python
-   num_workers = 2  # Reduce workers
-   MAX_IMAGE_SIZE = 512  # Reduce image size
-   ```
+```bash
+NUM_WORKERS=2 MAX_IMAGE_SIZE=512 make start
+```
 
 3. **Model download errors**: Ensure internet connectivity for first-time model downloads
 
@@ -248,7 +228,8 @@ The Ray-based architecture provides significant performance improvements:
 Check application logs for detailed error information:
 
 ```bash
-docker logs <container-id>
+# Follow logs of the running container by name
+docker logs -f deepface-ray-api
 ```
 
 ## Development
@@ -258,14 +239,15 @@ docker logs <container-id>
 ```
 deepface-ray-api/
 ├── app/
-│   ├── __init__.py          # Package initialization
-│   ├── main.py              # FastAPI application
-│   ├── models.py            # Pydantic models
-│   ├── ray_tasks.py         # Ray remote functions
-│   └── utils.py             # Utility functions
-├── pyproject.toml           # Project metadata and dependencies
-├── Dockerfile              # Container configuration
-└── README.md               # This file
+│   ├── __init__.py
+│   ├── main.py
+│   ├── models.py
+│   ├── tasks.py
+│   └── utils.py
+├── pyproject.toml
+├── Dockerfile
+├── Makefile
+└── README.md
 ```
 
 ### Contributing

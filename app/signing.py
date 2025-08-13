@@ -33,6 +33,11 @@ def add_hmac_signing_middleware(app: FastAPI) -> None:
 
 	@app.middleware("http")
 	async def hmac_signing_middleware(request: Request, call_next):
+		# Allow unauthenticated access to API documentation and OpenAPI schema
+		path = request.url.path
+		if path.startswith("/docs") or path.startswith("/redoc") or path.startswith("/openapi") or path == "/favicon.ico":
+			return await call_next(request)
+
 		# Read and buffer the body for downstream access
 		raw_body: bytes = await request.body()
 

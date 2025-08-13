@@ -1,5 +1,32 @@
 # Changelog
 
+[1.8.4] - 2025-08-13
+
+### Changed - P0 Containerization Tooling
+- Ensured all `make` targets run via Docker with no local `uv` usage.
+  - Removed host-side `uv run` calls from `clean` and `stop`.
+  - `make test` now runs the test client inside the image without `uv`, mounting the workspace.
+  - `make serve` now runs the containerized API in the foreground.
+  - `make deps` delegates to `make install` (container image build).
+- Added `requests` to application dependencies to support the containerized test client.
+- Relaxed CSP for `/docs` and `/redoc` in `app/secheaders.py` to allow Swagger/ReDoc assets (JS/CSS/fonts) so API docs render correctly.
+
+[1.8.3] - 2025-08-13
+
+### Changed - P0 Containerization
+- Consolidated Ray and FastAPI into a single Docker image and entrypoint.
+  - Container starts a local Ray head and then launches the API.
+  - No docker-compose required for default single-node deployment.
+- Updated `Makefile run` to use `docker run` for a single-container workflow, aligning dev and prod.
+
+[1.8.2] - 2025-08-13
+
+### Changed - P0 Startup Reliability
+- `make serve` now starts a local Ray head automatically before launching the API.
+  - Uses `uv run ray start --head` to ensure it runs in the project virtual environment.
+  - `stop` and `clean` targets now issue `ray stop` to gracefully shut down the local cluster.
+- macOS Apple Silicon fix: switched to `tensorflow-macos==2.15.0` via environment markers to resolve `ModuleNotFoundError: No module named 'tensorflow'` during startup.
+
 [1.8.1] - 2025-08-13
 
 ### Added - P1 Developer Tooling
