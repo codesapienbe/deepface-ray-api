@@ -6,8 +6,11 @@ services:
     ports:
       - "8000:8000"
     environment:
+      - RAY_object_store_memory=536870912
+      - RAY_spill_dir=/tmp/ray/spill
+      - RAY_enable_object_reconstruction=1
+      - NUM_WORKERS=1
       - RAY_ADDRESS=auto
-      - NUM_WORKERS=4
       - MAX_IMAGE_SIZE=1024
     volumes:
       - /tmp/ray:/tmp/ray  # Ray temp files
