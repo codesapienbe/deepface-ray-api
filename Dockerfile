@@ -23,7 +23,7 @@ ENV PATH="/root/.local/bin:${PATH}"
 RUN curl -fsSL https://astral.sh/uv/install.sh | sh
 
 # Copy dependency files and Makefile
-COPY requirements.txt ./
+COPY pyproject.toml ./
 COPY Makefile ./
 
 # Install dependencies via Makefile target

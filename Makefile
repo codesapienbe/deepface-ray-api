@@ -48,7 +48,7 @@ test:
 # In-container targets used by Dockerfile
 
 deps:
-	uv pip install --system --no-cache-dir -r requirements.txt
+	uv pip install --system --no-cache-dir .
 
 serve:
 	uv run python run.py

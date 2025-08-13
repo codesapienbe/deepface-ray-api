@@ -49,14 +49,17 @@ RAY_ADDRESS=ray-head:6379 docker-compose --profile multi-node up -d deepface-api
 ### Manual Installation
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Install uv (if not installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install project dependencies (from pyproject.toml)
+uv sync
 
 # Start Ray (optional, for distributed computing)
 ray start --head --port=6379
 
 # Run the application
-python -m app.main
+uv run python -m app.main
 ```
 
 ## API Documentation
@@ -260,7 +263,7 @@ deepface-ray-api/
 │   ├── models.py            # Pydantic models
 │   ├── ray_tasks.py         # Ray remote functions
 │   └── utils.py             # Utility functions
-├── requirements.txt         # Python dependencies
+├── pyproject.toml           # Project metadata and dependencies
 ├── Dockerfile              # Container configuration
 └── README.md               # This file
 ```
