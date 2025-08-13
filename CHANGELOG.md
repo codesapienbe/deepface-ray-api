@@ -11,6 +11,11 @@
 - Added `requests` to application dependencies to support the containerized test client.
 - Relaxed CSP for `/docs` and `/redoc` in `app/secheaders.py` to allow Swagger/ReDoc assets (JS/CSS/fonts) so API docs render correctly.
 - Fixed multipart form parsing for options on `/verify`, `/analyze`, `/batch-analyze`, and `/extract-embedding` by binding request models via `Depends(Model.as_form)`. This resolves 422 errors like `type_error.dict` when sending files with form fields.
+- Hardened image decoding in `app/tasks.py` to use OpenCV for bytes-to-array conversion with a PIL fallback, preventing DeepFace errors like `AttributeError: 'tuple' object has no attribute 'shape'`.
+- Resource tuning for low-memory nodes:
+  - Docker entrypoint no longer starts a Ray head; app uses Ray local mode to reduce overhead.
+  - Reduced default `RAY_object_store_memory` to 256MB; capped threads via `OMP_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`, `MKL_NUM_THREADS=1`, and TensorFlow thread envs.
+  - Default `NUM_WORKERS` set to 1; default model set to `SFace` for lighter memory footprint.
 
 [1.8.3] - 2025-08-13
 

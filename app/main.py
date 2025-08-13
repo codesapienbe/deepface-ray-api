@@ -34,9 +34,9 @@ logger = logging.getLogger(__name__)
 deepface_workers: List[ray.actor.ActorHandle] = []
 _current_worker_idx: int = 0
 try:
-    num_workers = int(os.getenv("NUM_WORKERS", "4"))
+    num_workers = int(os.getenv("NUM_WORKERS", "1"))
 except Exception:
-    num_workers = 4
+    num_workers = 1
 
 # Limits
 MAX_DB_IMAGES = int(os.getenv("MAX_DB_IMAGES", "50"))

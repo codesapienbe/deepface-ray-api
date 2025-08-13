@@ -35,12 +35,17 @@ start:
 		-v /tmp/ray:/tmp/ray \
 		--shm-size=4g \
 		$(IMAGE_NAME):$(IMAGE_TAG)
+	docker logs -f $(IMAGE_NAME)
 
 
 stop:
 	docker stop $(IMAGE_NAME) || true
 	docker rm -f $(IMAGE_NAME) || true
 
+
+restart:
+	$(MAKE) stop
+	$(MAKE) start
 
 deploy:
 	@test -n "$(REGISTRY)" || { echo "REGISTRY is required for deploy (e.g., REGISTRY=registry.example.com)"; exit 1; }

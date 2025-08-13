@@ -44,7 +44,7 @@ class Normalization(str, Enum):
 	ARCFACE = "ArcFace"
 
 class VerifyRequest(BaseModel):
-	model_name: ModelName = ModelName.VGG_FACE
+	model_name: ModelName = ModelName.SFACE
 	detector_backend: DetectorBackend = DetectorBackend.OPENCV
 	distance_metric: DistanceMetric = DistanceMetric.COSINE
 	enforce_detection: bool = True
@@ -54,7 +54,7 @@ class VerifyRequest(BaseModel):
 	@classmethod
 	def as_form(
 		cls,
-		model_name: ModelName = Form(ModelName.VGG_FACE),
+		model_name: ModelName = Form(ModelName.SFACE),
 		detector_backend: DetectorBackend = Form(DetectorBackend.OPENCV),
 		distance_metric: DistanceMetric = Form(DistanceMetric.COSINE),
 		enforce_detection: bool = Form(True),
@@ -72,7 +72,7 @@ class VerifyRequest(BaseModel):
 
 class AnalyzeRequest(BaseModel):
 	actions: List[Action] = Field(default=[Action.AGE, Action.GENDER, Action.EMOTION, Action.RACE])
-	model_name: ModelName = ModelName.VGG_FACE
+	model_name: ModelName = ModelName.SFACE
 	detector_backend: DetectorBackend = DetectorBackend.OPENCV
 	enforce_detection: bool = True
 	align: bool = True
@@ -91,7 +91,7 @@ class AnalyzeRequest(BaseModel):
 	@classmethod
 	def as_form(
 		cls,
-		model_name: ModelName = Form(ModelName.VGG_FACE),
+		model_name: ModelName = Form(ModelName.SFACE),
 		detector_backend: DetectorBackend = Form(DetectorBackend.OPENCV),
 		enforce_detection: bool = Form(True),
 		align: bool = Form(True),
@@ -107,7 +107,7 @@ class AnalyzeRequest(BaseModel):
 		)
 
 class FindRequest(BaseModel):
-	model_name: ModelName = ModelName.VGG_FACE
+	model_name: ModelName = ModelName.SFACE
 	detector_backend: DetectorBackend = DetectorBackend.OPENCV
 	distance_metric: DistanceMetric = DistanceMetric.COSINE
 	enforce_detection: bool = True
@@ -118,7 +118,7 @@ class FindRequest(BaseModel):
 	@classmethod
 	def as_form(
 		cls,
-		model_name: ModelName = Form(ModelName.VGG_FACE),
+		model_name: ModelName = Form(ModelName.SFACE),
 		detector_backend: DetectorBackend = Form(DetectorBackend.OPENCV),
 		distance_metric: DistanceMetric = Form(DistanceMetric.COSINE),
 		enforce_detection: bool = Form(True),
@@ -153,7 +153,7 @@ class FindResponse(BaseModel):
 	results: List[Dict[str, Any]]
 
 class ExtractEmbeddingRequest(BaseModel):
-	model_name: ModelName = ModelName.VGG_FACE
+	model_name: ModelName = ModelName.SFACE
 	detector_backend: DetectorBackend = DetectorBackend.OPENCV
 	enforce_detection: bool = True
 	align: bool = True
@@ -162,7 +162,7 @@ class ExtractEmbeddingRequest(BaseModel):
 	@classmethod
 	def as_form(
 		cls,
-		model_name: ModelName = Form(ModelName.VGG_FACE),
+		model_name: ModelName = Form(ModelName.SFACE),
 		detector_backend: DetectorBackend = Form(DetectorBackend.OPENCV),
 		enforce_detection: bool = Form(True),
 		align: bool = Form(True),

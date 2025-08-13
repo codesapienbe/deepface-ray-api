@@ -6,6 +6,7 @@ import io
 import base64
 from typing import List, Dict, Any, Optional
 import logging
+import cv2
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -25,12 +26,22 @@ class DeepFaceWorker:
         return "ok"
 
     def _bytes_to_image_array(self, image_bytes: bytes) -> np.ndarray:
-        """Convert bytes to numpy array for DeepFace processing."""
+        """Convert bytes to numpy array for DeepFace processing (BGR)."""
         try:
-            image = Image.open(io.BytesIO(image_bytes))
-            if image.mode != 'RGB':
-                image = image.convert('RGB')
-            return np.array(image)
+            # Decode bytes to BGR image via OpenCV for consistent ndarray output
+            np_buf = np.frombuffer(image_bytes, dtype=np.uint8)
+            img_bgr = cv2.imdecode(np_buf, cv2.IMREAD_COLOR)
+            if img_bgr is None:
+                # Fallback to PIL if OpenCV cannot decode
+                image = Image.open(io.BytesIO(image_bytes))
+                if image.mode != 'RGB':
+                    image = image.convert('RGB')
+                img_rgb = np.array(image)
+                # Convert RGB to BGR for OpenCV/DeepFace expectations
+                img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+            if not isinstance(img_bgr, np.ndarray) or img_bgr.ndim != 3 or img_bgr.shape[2] != 3:
+                raise ValueError("Decoded image is not a valid BGR image")
+            return img_bgr
         except Exception as e:
             logger.error(f"Error converting bytes to image: {e}")
             raise ValueError(f"Invalid image format: {e}")
