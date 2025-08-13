@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  deepface-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - RAY_ADDRESS=auto
+      - NUM_WORKERS=4
+      - MAX_IMAGE_SIZE=1024
+    volumes:
+      - /tmp/ray:/tmp/ray  # Ray temp files
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+    shm_size: "2g"
+
+  # Optional: Ray head node (for multi-node deployment)
+  ray-head:
+    image: rayproject/ray:2.8.0-py310
+    command: ray start --head --port=6379 --dashboard-host=0.0.0.0 --dashboard-port=8265 --block
+    ports:
+      - "6379:6379"  # Ray client port
+      - "8265:8265"  # Ray dashboard
+    environment:
+      - RAY_DISABLE_IMPORT_WARNING=1
+    volumes:
+      - /tmp/ray:/tmp/ray
+    restart: unless-stopped
+    profiles:
+      - multi-node  # Only start with --profile multi-node
+
+networks:
+  default:
+    driver: bridge
