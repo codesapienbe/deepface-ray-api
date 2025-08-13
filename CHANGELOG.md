@@ -75,4 +75,11 @@
   - Standardized 422 responses for validation errors.
   - Centralized processing in `app/utils.py` used by all image endpoints.
   - Performance: Negligible overhead with 1 MB chunk size; re-encoding optimized.
-  - Security: Reduces risk of DoS via oversized files and prevents malformed image payload exploits. 
+  - Security: Reduces risk of DoS via oversized files and prevents malformed image payload exploits.
+
+[1.0.2] - 2025-08-13
+
+### Changed - P0 Deployment Reliability
+- Docker Compose: removed hard dependency on `ray-head` and defaulted `RAY_ADDRESS` to `auto` for single-container startup.
+  - Optional `ray-head` service is now gated behind the `multi-node` profile.
+  - Updated README with compose usage for single-node and multi-node modes. 

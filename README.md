@@ -24,6 +24,28 @@ docker build -t deepface-ray-api .
 docker run -p 8000:8000 deepface-ray-api
 ```
 
+### Using Docker Compose
+
+- Default single-container mode (Ray local mode):
+
+```bash
+docker-compose up -d
+```
+
+- Multi-node mode with a dedicated Ray head (enable the optional profile):
+
+```bash
+# Launch API + Ray head node
+docker-compose --profile multi-node up -d
+
+# Or, if you already have the stack up, start ray-head separately:
+docker-compose --profile multi-node up -d ray-head
+
+# Point the API to the head explicitly if overriding defaults
+# (compose already defaults RAY_ADDRESS to auto)
+RAY_ADDRESS=ray-head:6379 docker-compose --profile multi-node up -d deepface-api
+```
+
 ### Manual Installation
 
 ```bash
@@ -110,7 +132,7 @@ curl -X POST "http://localhost:8000/batch-analyze" \
 
 ### Environment Variables
 
-- `RAY_ADDRESS`: Ray cluster address (default: "auto")
+- `RAY_ADDRESS`: Ray cluster address (default: "auto"). When using the optional `ray-head` service via compose profile, set `RAY_ADDRESS=ray-head:6379`.
 - `NUM_WORKERS`: Number of DeepFace workers (default: 4)
 - `MAX_IMAGE_SIZE`: Maximum image size for processing (default: 1024)
 
