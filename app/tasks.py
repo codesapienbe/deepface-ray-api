@@ -216,4 +216,7 @@ def get_deepface_models() -> Dict[str, List[str]]:
             "models": models,
             "detectors": detectors,
             "distance_metrics": ["cosine", "euclidean", "euclidean_l2"]
-        } 
+        }
+    except Exception as e:
+        logger.error(f"Error getting models: {e}")
+        raise RuntimeError(f"Failed to get models: {e}") 
