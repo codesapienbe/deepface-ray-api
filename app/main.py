@@ -59,7 +59,7 @@ async def lifespan(app: FastAPI):
     """Manage Ray cluster lifecycle."""
     try:
         # Initialize Ray
-        if not ray.is_initialized():
+        if not ray.is_initialized() and os.getenv("DISABLE_RAY", "0") != "1":
             # Ensure Ray temp dir and dashboard settings are safe for container
             os.environ.setdefault("RAY_DISABLE_DASHBOARD", "1")
             os.environ.setdefault("RAY_TMPDIR", "/tmp/ray")
@@ -71,25 +71,38 @@ async def lifespan(app: FastAPI):
                 ray.init(address="auto", ignore_reinit_error=True, include_dashboard=False)
                 logger.info("Ray initialized successfully (address=auto)")
             except Exception as init_err:
-                logger.warning(f"Ray auto-connect failed: {init_err}; starting local Ray instance.")
-                ray.init(ignore_reinit_error=True, include_dashboard=False)
-                logger.info("Ray initialized successfully (local)")
+                logger.warning(f"Ray auto-connect failed: {init_err}; attempting local Ray instance.")
+                # Force local mode regardless of RAY_ADDRESS env
+                os.environ.pop("RAY_ADDRESS", None)
+                try:
+                    ray.init(address="local", ignore_reinit_error=True, include_dashboard=False)
+                    logger.info("Ray initialized successfully (local)")
+                except Exception as local_err:
+                    logger.error(f"Failed to start local Ray: {local_err}")
 
-        # Create DeepFace workers
+        # Create DeepFace workers if Ray is available
         global deepface_workers
-        deepface_workers = [DeepFaceWorker.remote() for _ in range(num_workers)]
-        logger.info(f"Created {num_workers} DeepFace workers")
+        if ray.is_initialized():
+            deepface_workers = [DeepFaceWorker.remote() for _ in range(num_workers)]
+            logger.info(f"Created {num_workers} DeepFace workers")
+        else:
+            deepface_workers = []
+            logger.warning("Ray is not initialized; proceeding without workers")
 
         yield
 
     except Exception as e:
+        # Do not abort app startup due to Ray issues
         logger.error(f"Error during startup: {e}")
-        raise
+        yield
     finally:
         # Cleanup
         if ray.is_initialized():
-            ray.shutdown()
-            logger.info("Ray shutdown completed")
+            try:
+                ray.shutdown()
+                logger.info("Ray shutdown completed")
+            except Exception as sd_err:
+                logger.warning(f"Ray shutdown error: {sd_err}")
 
 # Create FastAPI app
 app = FastAPI(

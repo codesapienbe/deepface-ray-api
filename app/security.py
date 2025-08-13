@@ -57,7 +57,7 @@ def _extract_bearer_token(request: Request) -> Optional[str]:
     return None
 
 
-async def require_jwt_or_api_key(allowed_roles: List[Role]) -> Callable[[Request], User]:
+def require_jwt_or_api_key(allowed_roles: List[Role]) -> Callable[[Request], User]:
     async def dependency(request: Request) -> User:
         # Allow anonymous if both mechanisms disabled
         if not AUTH_ENABLED and not API_KEY_ENABLED:
