@@ -1,5 +1,12 @@
 # Changelog
 
+[1.5.0] - 2025-08-13
+
+### Added - P0 Transport Security
+- Optional TLS support for Uvicorn via `run.py` with env configuration.
+  - Env: TLS_ENABLED, TLS_CERTFILE, TLS_KEYFILE, TLS_CA_CERTS.
+  - Dockerfile updated to use `python run.py` as entrypoint for TLS.
+
 [1.4.0] - 2025-08-13
 
 ### Added - P0 Data Integrity
