@@ -3,10 +3,10 @@
 Startup script for DeepFace Ray API
 
 Usage:
-    python run.py                    # Start with default settings
-    python run.py --workers 8       # Start with 8 workers
-    python run.py --port 8080       # Start on port 8080
-    python run.py --debug           # Start in debug mode
+    uv python run.py                    # Start with default settings
+    uv python run.py --workers 8       # Start with 8 workers
+    uv python run.py --port 8080       # Start on port 8080
+    uv python run.py --debug           # Start in debug mode
 """
 
 import argparse
@@ -34,7 +34,7 @@ def main():
     parser.add_argument("--port", type=int, default=8000, help="Port number")
     parser.add_argument("--workers", type=int, default=4, help="Number of Ray workers")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
-    parser.add_argument("--ray-address", default="auto", help="Ray cluster address")
+    parser.add_argument("--ray-address", default=os.getenv("RAY_ADDRESS", "auto"), help="Ray cluster address")
     parser.add_argument("--no-ray", action="store_true", help="Disable Ray (for testing)")
 
     args = parser.parse_args()

@@ -68,8 +68,8 @@ async def lifespan(app: FastAPI):
             except Exception as mk_err:
                 logger.warning(f"Unable to create RAY_TMPDIR: {mk_err}")
             try:
-                ray.init(address="auto", ignore_reinit_error=True, include_dashboard=False)
-                logger.info("Ray initialized successfully (address=auto)")
+                ray.init(address=os.getenv("RAY_ADDRESS", "auto"), ignore_reinit_error=True, include_dashboard=False)
+                logger.info(f"Ray initialized successfully (address={os.getenv('RAY_ADDRESS', 'auto')})")
             except Exception as init_err:
                 logger.warning(f"Ray auto-connect failed: {init_err}; attempting local Ray instance.")
                 # Force local mode regardless of RAY_ADDRESS env

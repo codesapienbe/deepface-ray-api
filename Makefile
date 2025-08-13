@@ -1,66 +1,60 @@
 # DeepFace Ray API Makefile
 
-.PHONY: help install run test docker-build docker-run clean
+IMAGE_NAME ?= deepface-ray-api
+IMAGE_TAG ?= latest
+REGISTRY ?=
+
+.PHONY: help install run test deploy clean verify deps serve logs stop
 
 help:
 	@echo "Available commands:"
-	@echo "  install      - Install Python dependencies"
-	@echo "  run          - Run the development server"
-	@echo "  test         - Run the test client"
-	@echo "  docker-build - Build Docker image"
-	@echo "  docker-run   - Run Docker container"
-	@echo "  docker-compose - Start with docker-compose"
-	@echo "  clean        - Clean up temporary files"
+	@echo "  install      - Build Docker image ($(IMAGE_NAME):$(IMAGE_TAG))"
+	@echo "  run          - Run the application via docker compose"
+	@echo "  deploy       - Tag and push image to registry (requires REGISTRY env)"
+	@echo "  test         - Run the test client inside a container"
+	@echo "  verify       - Lint and format checks with ruff (containerized)"
+	@echo "  logs         - Tail application logs"
+	@echo "  stop         - Stop containers"
+	@echo "  clean        - Clean up temporary files and stop containers"
 
-install:
-	pip install -r requirements.txt
-
-run:
-	python run.py
-
-run-debug:
-	python run.py --debug
-
-run-workers-8:
-	python run.py --workers 8
-
-test:
-	python test_client.py
-
-docker-build:
-	docker build -t deepface-ray-api .
-
-docker-run: docker-build
-	docker run -p 8000:8000 deepface-ray-api
-
-docker-compose:
-	docker-compose up --build
-
-docker-compose-multi:
-	docker-compose --profile multi-node up --build
+verify:
+	docker run --rm -v $(CURDIR):/app -w /app ghcr.io/astral-sh/ruff:latest ruff check app/
+	docker run --rm -v $(CURDIR):/app -w /app ghcr.io/astral-sh/ruff:latest ruff format --check app/
 
 clean:
 	find . -type f -name "*.pyc" -delete
 	find . -type d -name "__pycache__" -delete
 	rm -rf .pytest_cache
 	rm -rf /tmp/ray
-	docker system prune -f
+	docker compose down -v || true
+	docker rm -f deepface-ray-api || true
+	docker rm -f ray-head || true
 
-# Development helpers
-format:
-	black app/
-	isort app/
+install:
+	docker build -t $(IMAGE_NAME):$(IMAGE_TAG) .
 
-lint:
-	flake8 app/
-	mypy app/
+run:
+	docker compose up -d
 
-# Ray cluster management
-ray-start:
-	ray start --head --port=6379 --dashboard-host=0.0.0.0
+logs:
+	docker compose logs -f
 
-ray-stop:
-	ray stop
+stop:
+	docker compose down
 
-ray-status:
-	ray status
+test:
+	docker run --rm --network host $(IMAGE_NAME):$(IMAGE_TAG) uv run python test_client.py
+
+# In-container targets used by Dockerfile
+
+deps:
+	uv pip install --system --no-cache-dir -r requirements.txt
+
+serve:
+	uv run python run.py
+
+deploy:
+	@test -n "$(REGISTRY)" || { echo "REGISTRY is required for deploy (e.g., REGISTRY=registry.example.com)"; exit 1; }
+	docker tag $(IMAGE_NAME):$(IMAGE_TAG) $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
+	docker push $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
+

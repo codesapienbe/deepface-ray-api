@@ -1,7 +1,6 @@
 services:
 
   deepface-api:
-    build: .
     image: deepface-ray-api
     container_name: deepface-ray-api
     hostname: deepface-ray-api
