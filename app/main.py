@@ -7,30 +7,40 @@ import logging
 from contextlib import asynccontextmanager
 import os
 import uuid
+import time
 
 from .models import (
     VerifyRequest, VerifyResponse, AnalyzeRequest, AnalyzeResponse,
-    FindRequest, FindResponse, ExtractEmbeddingRequest, ExtractEmbeddingResponse
+    FindRequest, FindResponse, ExtractEmbeddingRequest, ExtractEmbeddingResponse,
+    SecureVerifyRequest, SecureAnalyzeRequest
 )
-from .ray_tasks import DeepFaceWorker, get_deepface_models
+from .tasks import DeepFaceWorker, get_deepface_models
 from .utils import process_uploaded_file
 from .auth import auth_router, Role, User
 from .security import require_jwt_or_api_key, rate_limit
 from .errors import add_exception_handlers
 from .signing import add_hmac_signing_middleware
 from .reliability import CircuitBreaker, retry_call, log_to_dlq, CircuitOpenError
-from .security_headers import add_security_headers
+from .secheaders import add_security_headers
+from .logcnf import configure_logging
+from .crypto import decrypt_bytes
+from .audit import log_audit
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+configure_logging()
 logger = logging.getLogger(__name__)
 
 # Global variables for Ray actors
 deepface_workers: List[ray.actor.ActorHandle] = []
+_current_worker_idx: int = 0
 try:
     num_workers = int(os.getenv("NUM_WORKERS", "4"))
 except Exception:
     num_workers = 4
+
+# Limits
+MAX_DB_IMAGES = int(os.getenv("MAX_DB_IMAGES", "50"))
+MAX_BATCH_IMAGES = int(os.getenv("MAX_BATCH_IMAGES", "32"))
 
 # Circuit breakers per operation
 cb_verify = CircuitBreaker(failure_threshold=3, recovery_timeout_sec=30, half_open_max_success=2)
@@ -98,12 +108,30 @@ add_security_headers(app)
 # Register HMAC signing middleware (no-op if disabled)
 add_hmac_signing_middleware(app)
 
-# Request ID middleware
+# Request ID + access logging middleware
 @app.middleware("http")
 async def add_request_id(request: Request, call_next):
+    start = time.time()
     request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
     request.state.request_id = request_id
     response = await call_next(request)
+    latency_ms = int((time.time() - start) * 1000)
+    # Access log
+    access_logger = logging.getLogger("access")
+    extra = {
+        "request_id": request_id,
+        "path": request.url.path,
+        "method": request.method,
+        "status_code": response.status_code,
+        "latency_ms": latency_ms,
+    }
+    try:
+        user = getattr(request.state, "user", None)
+        if user and getattr(user, "username", None):
+            extra["user_id"] = user.username
+    except Exception:
+        pass
+    access_logger.info("request_completed", extra=extra)
     response.headers["X-Request-ID"] = request_id
     return response
 
@@ -138,9 +166,14 @@ app.add_middleware(
 app.include_router(auth_router)
 
 def get_worker() -> ray.actor.ActorHandle:
-    """Get an available DeepFace worker using round-robin."""
-    import random
-    return random.choice(deepface_workers)
+    """Get an available DeepFace worker using round-robin with fallback."""
+    global _current_worker_idx
+    if not deepface_workers:
+        raise RuntimeError("No available DeepFace workers")
+    # Round-robin selection
+    worker = deepface_workers[_current_worker_idx % len(deepface_workers)]
+    _current_worker_idx = (_current_worker_idx + 1) % max(1, len(deepface_workers))
+    return worker
 
 @app.get("/")
 async def root(current_user: User = Depends(require_jwt_or_api_key([Role.VIEWER]))):
@@ -160,6 +193,19 @@ async def health_check(current_user: User = Depends(require_jwt_or_api_key([Role
         "ray_status": "connected" if ray.is_initialized() else "disconnected",
         "workers_available": len(deepface_workers)
     }
+
+@app.get("/ray/health")
+async def ray_health(current_user: User = Depends(require_jwt_or_api_key([Role.VIEWER]))):
+    """Ray worker health statuses."""
+    statuses: List[Dict[str, Any]] = []
+    for idx, worker in enumerate(deepface_workers):
+        try:
+            ref = worker.ping.remote()
+            result = ray.get(ref, timeout=2.0)
+            statuses.append({"worker_index": idx, "status": result})
+        except Exception as e:
+            statuses.append({"worker_index": idx, "status": "unreachable", "error": str(e)})
+    return {"workers": statuses, "total": len(statuses)}
 
 @app.get("/models")
 async def get_available_models(
@@ -209,6 +255,13 @@ async def verify_faces(
             return ray.get(result_future)
 
         result = retry_call(lambda: cb_verify.call(_call), attempts=2)
+        # Audit log
+        log_audit(
+            event="verify_success",
+            user_id=getattr(getattr(current_user, "username", None), "__str__", lambda: None)() if hasattr(current_user, "username") else None,
+            request_id=getattr(getattr(request, "state", None), "request_id", None) if 'request' in locals() else None,
+            metadata={"distance": result.get("distance"), "model": result.get("model")},
+        )
         return VerifyResponse(**result)
 
     except CircuitOpenError as e:
@@ -247,6 +300,13 @@ async def analyze_face(
             return ray.get(result_future)
 
         result = retry_call(lambda: cb_analyze.call(_call), attempts=2)
+        # Audit log
+        log_audit(
+            event="analyze_success",
+            user_id=getattr(getattr(current_user, "username", None), "__str__", lambda: None)() if hasattr(current_user, "username") else None,
+            request_id=getattr(getattr(request, "state", None), "request_id", None) if 'request' in locals() else None,
+            metadata={"faces": len(result) if isinstance(result, list) else 1},
+        )
         return AnalyzeResponse(results=result)
 
     except CircuitOpenError as e:
@@ -269,6 +329,8 @@ async def find_faces(
 ):
     """Find similar faces in a database of images."""
     try:
+        if len(database_images) > MAX_DB_IMAGES:
+            raise HTTPException(status_code=422, detail=f"Too many database images. Max: {MAX_DB_IMAGES}")
         # Process query image
         query_bytes = await process_uploaded_file(query_image)
 
@@ -355,6 +417,8 @@ async def batch_analyze_faces(
 ):
     """Analyze multiple faces in batch."""
     try:
+        if len(images) > MAX_BATCH_IMAGES:
+            raise HTTPException(status_code=422, detail=f"Too many images in batch. Max: {MAX_BATCH_IMAGES}")
         # Process all images
         tasks = []
         for img in images:
@@ -393,6 +457,80 @@ async def batch_analyze_faces(
     except Exception as e:
         logger.error(f"Error in batch analysis: {e}")
         raise HTTPException(status_code=500, detail=f"Batch analysis failed: {str(e)}")
+
+@app.post("/secure/verify", response_model=VerifyResponse)
+async def secure_verify(payload: SecureVerifyRequest, current_user: User = Depends(require_jwt_or_api_key([Role.OPERATOR, Role.ADMIN]))):
+    try:
+        img1_bytes = decrypt_bytes(payload.img1.nonce, payload.img1.ciphertext)
+        img2_bytes = decrypt_bytes(payload.img2.nonce, payload.img2.ciphertext)
+
+        def _call():
+            worker = get_worker()
+            result_future = worker.verify_faces.remote(
+                img1_bytes=img1_bytes,
+                img2_bytes=img2_bytes,
+                model_name=payload.options.model_name,
+                detector_backend=payload.options.detector_backend,
+                distance_metric=payload.options.distance_metric,
+                enforce_detection=payload.options.enforce_detection,
+                align=payload.options.align,
+                normalization=payload.options.normalization
+            )
+            return ray.get(result_future)
+
+        result = retry_call(lambda: cb_verify.call(_call), attempts=2)
+        # Audit log
+        log_audit(
+            event="secure_verify_success",
+            user_id=getattr(getattr(current_user, "username", None), "__str__", lambda: None)() if hasattr(current_user, "username") else None,
+            request_id=getattr(getattr(payload, "request_id", None), "__str__", lambda: None) if 'payload' in locals() else None,
+            metadata={"distance": result.get("distance"), "model": result.get("model")},
+        )
+        return VerifyResponse(**result)
+    except CircuitOpenError as e:
+        log_to_dlq("secure-verify", None, e)
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error in secure verify: {e}")
+        raise HTTPException(status_code=500, detail="Secure verify failed")
+
+@app.post("/secure/analyze", response_model=AnalyzeResponse)
+async def secure_analyze(payload: SecureAnalyzeRequest, current_user: User = Depends(require_jwt_or_api_key([Role.OPERATOR, Role.ADMIN, Role.VIEWER]))):
+    try:
+        img_bytes = decrypt_bytes(payload.image.nonce, payload.image.ciphertext)
+
+        def _call():
+            worker = get_worker()
+            result_future = worker.analyze_face.remote(
+                img_bytes=img_bytes,
+                actions=payload.options.actions,
+                model_name=payload.options.model_name,
+                detector_backend=payload.options.detector_backend,
+                enforce_detection=payload.options.enforce_detection,
+                align=payload.options.align,
+                silent=payload.options.silent
+            )
+            return ray.get(result_future)
+
+        result = retry_call(lambda: cb_analyze.call(_call), attempts=2)
+        # Audit log
+        log_audit(
+            event="secure_analyze_success",
+            user_id=getattr(getattr(current_user, "username", None), "__str__", lambda: None)() if hasattr(current_user, "username") else None,
+            request_id=getattr(getattr(payload, "request_id", None), "__str__", lambda: None) if 'payload' in locals() else None,
+            metadata={"faces": len(result) if isinstance(result, list) else 1},
+        )
+        return AnalyzeResponse(results=result)
+    except CircuitOpenError as e:
+        log_to_dlq("secure-analyze", None, e)
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error in secure analyze: {e}")
+        raise HTTPException(status_code=500, detail="Secure analyze failed")
 
 if __name__ == "__main__":
     uvicorn.run(

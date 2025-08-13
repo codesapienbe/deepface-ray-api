@@ -1,5 +1,17 @@
 # Changelog
 
+[1.8.0] - 2025-08-13
+
+### Added - P0 Ray Operations
+- Round-robin worker selection for better load distribution.
+- New endpoint `/ray/health` to report per-worker health via ping.
+
+[1.7.0] - 2025-08-13
+
+### Added - P0 Input Validation Enhancements
+- Stronger Pydantic validation: added enums for actions and normalization.
+- Enforced maximum list sizes via env: `MAX_DB_IMAGES` and `MAX_BATCH_IMAGES` with 422 responses on overflow.
+
 [1.6.0] - 2025-08-13
 
 ### Added - P0 Input Security

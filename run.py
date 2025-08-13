@@ -17,30 +17,15 @@ import ray
 import ssl
 
 
-def _build_ssl_context_from_env() -> ssl.SSLContext | None:
+def _tls_params_from_env() -> tuple[bool, str | None, str | None, str | None]:
     tls_enabled = os.getenv("TLS_ENABLED", "false").lower() == "true"
-    if not tls_enabled:
-        return None
     certfile = os.getenv("TLS_CERTFILE")
     keyfile = os.getenv("TLS_KEYFILE")
     ca_certs = os.getenv("TLS_CA_CERTS")
-    if not certfile or not keyfile:
+    if tls_enabled and (not certfile or not keyfile):
         print("TLS_ENABLED=true but TLS_CERTFILE or TLS_KEYFILE missing; starting without TLS", file=sys.stderr)
-        return None
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    # Restrict to TLS 1.2+ with preference for TLS 1.3 when available
-    try:
-        context.minimum_version = ssl.TLSVersion.TLSv1_2
-        # If Python/OpenSSL supports TLS 1.3, it will be used automatically
-    except Exception:
-        pass
-    context.load_cert_chain(certfile=certfile, keyfile=keyfile)
-    if ca_certs:
-        try:
-            context.load_verify_locations(cafile=ca_certs)
-        except Exception as e:
-            print(f"Warning: failed to load CA certs: {e}", file=sys.stderr)
-    return context
+        return False, None, None, None
+    return tls_enabled, certfile, keyfile, ca_certs
 
 
 def main():
@@ -83,7 +68,7 @@ def main():
             print(f"Warning: Ray initialization failed: {e}")
             print("The API will still start but without Ray acceleration")
 
-    ssl_ctx = _build_ssl_context_from_env()
+    tls_enabled, certfile, keyfile, ca_certs = _tls_params_from_env()
 
     # Start the server
     uvicorn.run(
@@ -93,7 +78,10 @@ def main():
         reload=args.debug,
         workers=1,  # Always use 1 uvicorn worker with Ray
         log_level="debug" if args.debug else "info",
-        ssl=ssl_ctx,
+        ssl_certfile=certfile if tls_enabled else None,
+        ssl_keyfile=keyfile if tls_enabled else None,
+        ssl_ca_certs=ca_certs if tls_enabled and ca_certs else None,
+        # ssl_version, ssl_ciphers, etc., can be added via env if needed
     )
 
 

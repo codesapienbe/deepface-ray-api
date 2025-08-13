@@ -20,6 +20,10 @@ class DeepFaceWorker:
         self.initialized = False
         logger.info("DeepFace worker initialized")
 
+    def ping(self) -> str:
+        """Health check ping."""
+        return "ok"
+
     def _bytes_to_image_array(self, image_bytes: bytes) -> np.ndarray:
         """Convert bytes to numpy array for DeepFace processing."""
         try:
@@ -121,7 +125,7 @@ class DeepFaceWorker:
 
             for db_item in db_images:
                 try:
-                    db_img_array = self._bytes_to_image_array(db_item["image_bytes"])
+                    db_img_array = self._bytes_to_image_array(db_item["image_bytes"])\
 
                     # Verify against each database image
                     verification_result = DeepFace.verify(
@@ -212,7 +216,4 @@ def get_deepface_models() -> Dict[str, List[str]]:
             "models": models,
             "detectors": detectors,
             "distance_metrics": ["cosine", "euclidean", "euclidean_l2"]
-        }
-    except Exception as e:
-        logger.error(f"Error getting models: {e}")
-        raise RuntimeError(f"Failed to get models: {e}")
+        } 
