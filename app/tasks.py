@@ -125,7 +125,7 @@ class DeepFaceWorker:
 
             for db_item in db_images:
                 try:
-                    db_img_array = self._bytes_to_image_array(db_item["image_bytes"])\
+                    db_img_array = self._bytes_to_image_array(db_item["image_bytes"])
 
                     # Verify against each database image
                     verification_result = DeepFace.verify(
