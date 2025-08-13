@@ -17,6 +17,7 @@ from .utils import process_uploaded_file
 from .auth import auth_router, Role, User
 from .security import require_jwt_or_api_key, rate_limit
 from .errors import add_exception_handlers
+from .signing import add_hmac_signing_middleware
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -82,6 +83,9 @@ app = FastAPI(
 
 # Register centralized error handlers
 add_exception_handlers(app)
+
+# Register HMAC signing middleware (no-op if disabled)
+add_hmac_signing_middleware(app)
 
 # Request ID middleware
 @app.middleware("http")

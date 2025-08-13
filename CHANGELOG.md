@@ -1,5 +1,12 @@
 # Changelog
 
+[1.4.0] - 2025-08-13
+
+### Added - P0 Data Integrity
+- HMAC-based request verification and response signing middleware (env-controlled).
+  - Headers: X-Timestamp, X-Signature for requests; X-Response-Timestamp, X-Response-Signature for responses.
+  - Config: SIGNING_ENABLED, SIGNING_SECRET, SIGNING_TOLERANCE_SECONDS, SIGNING_SIGN_RESPONSES.
+
 [1.3.0] - 2025-08-13
 
 ### Added - P0 Service Auth & Throttling
