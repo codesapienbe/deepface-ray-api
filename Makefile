@@ -3,9 +3,14 @@
 IMAGE_NAME ?= deepface-ray-api
 IMAGE_TAG ?= latest
 REGISTRY ?=
+# Select worker backend: ray|celery|kafka|local (overridable)
+WORKER_PROVIDER ?= ray
 KAFKA_BOOTSTRAP_SERVERS ?= host.docker.internal:9092
 KAFKA_IMAGE ?= bitnami/kafka:latest
 KAFKA_CONTAINER_NAME ?= kafka
+# Resource limits (overridable)
+API_MEMORY ?= 8g
+KAFKA_MEMORY ?= 3g
 # Named volumes for persistence
 KAFKA_VOLUME ?= kafka-data
 API_VOLUME_DEEPFACE ?= deepface-cache
@@ -33,36 +38,43 @@ start:
 	docker volume create $(KAFKA_VOLUME) >/dev/null
 	docker volume create $(API_VOLUME_DEEPFACE) >/dev/null
 	docker volume create $(API_VOLUME_RAY) >/dev/null
-	# Single-node Kafka (KRaft) with external access via host.docker.internal:9092
-	docker rm -f $(KAFKA_CONTAINER_NAME) || true
-	docker run -d \
-		--name $(KAFKA_CONTAINER_NAME) \
-		--hostname $(KAFKA_CONTAINER_NAME) \
-		-p 9092:9092 \
-		-e KAFKA_CFG_NODE_ID=0 \
-		-e KAFKA_CFG_PROCESS_ROLES=broker,controller \
-		-e KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@127.0.0.1:9093 \
-		-e KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093 \
-		-e KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://host.docker.internal:9092 \
-		-e KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER \
-		-e KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT \
-		-e ALLOW_PLAINTEXT_LISTENER=yes \
-		-v $(KAFKA_VOLUME):/bitnami/kafka \
-		$(KAFKA_IMAGE)
+	# Conditionally start Kafka only if requested
+	@if [ "$(WORKER_PROVIDER)" = "kafka" ]; then \
+		echo "Starting Kafka container ($(KAFKA_CONTAINER_NAME}))..."; \
+		docker rm -f $(KAFKA_CONTAINER_NAME) || true; \
+		docker run -d \
+			--name $(KAFKA_CONTAINER_NAME) \
+			--hostname $(KAFKA_CONTAINER_NAME) \
+			--memory $(KAFKA_MEMORY) \
+			-p 9092:9092 \
+			-e KAFKA_CFG_NODE_ID=0 \
+			-e KAFKA_CFG_PROCESS_ROLES=broker,controller \
+			-e KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@127.0.0.1:9093 \
+			-e KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093 \
+			-e KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://host.docker.internal:9092 \
+			-e KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER \
+			-e KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT \
+			-e ALLOW_PLAINTEXT_LISTENER=yes \
+			-v $(KAFKA_VOLUME):/bitnami/kafka \
+			$(KAFKA_IMAGE); \
+	else \
+		echo "Kafka not requested; skipping Kafka startup."; \
+	fi
 	# Start API (DeepFace Ray API) 
 	docker rm -f $(IMAGE_NAME) || true
 	docker run -d \
 		--name $(IMAGE_NAME) \
 		--hostname $(IMAGE_NAME) \
+		--memory $(API_MEMORY) \
 		-v $(API_VOLUME_DEEPFACE):/root/.deepface \
 		-p 8000:8000 \
-		-e RAY_object_store_memory=1073741824 \
+		-e RAY_object_store_memory=4294967296 \
 		-e RAY_spill_dir=/tmp/ray/spill \
 		-e RAY_enable_object_reconstruction=1 \
 		-e NUM_WORKERS=2 \
 		-e RAY_ADDRESS=auto \
 		-e MAX_IMAGE_SIZE=1024 \
-		-e WORKER_PROVIDER=ray \
+		-e WORKER_PROVIDER=$(WORKER_PROVIDER) \
 		-e KAFKA_BOOTSTRAP_SERVERS=$(KAFKA_BOOTSTRAP_SERVERS) \
 		-e APP_LOG_LEVEL=$(APP_LOG_LEVEL) \
 		-v $(API_VOLUME_RAY):/tmp/ray \
@@ -70,8 +82,12 @@ start:
 		$(IMAGE_NAME):$(IMAGE_TAG)
 
 logs:
-	@echo "Attaching to logs for Kafka container: $(KAFKA_CONTAINER_NAME)"
-	docker logs -f $(KAFKA_CONTAINER_NAME) &
+	@if [ "$(WORKER_PROVIDER)" = "kafka" ]; then \
+		echo "Attaching to logs for Kafka container: $(KAFKA_CONTAINER_NAME)"; \
+		docker logs -f $(KAFKA_CONTAINER_NAME) & \
+	else \
+		echo "Kafka not selected; skipping Kafka logs."; \
+	fi
 	@echo "Attaching to logs for API container: $(IMAGE_NAME)"
 	docker logs -f $(IMAGE_NAME)
 

@@ -59,8 +59,8 @@ RUN echo '#!/usr/bin/env bash' > /app/entrypoint.sh && \
 # Expose port
 EXPOSE 8000
 
-# Environment defaults
-ENV RAY_object_store_memory=1073741824 \
+# Environment defaults (override at runtime with -e WORKER_PROVIDER=...)
+ENV RAY_object_store_memory=4294967296 \
     RAY_spill_dir=/tmp/ray/spill \
     RAY_enable_object_reconstruction=1 \
     NUM_WORKERS=1 \
