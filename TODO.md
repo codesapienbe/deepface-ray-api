@@ -52,6 +52,28 @@
 
 ## 🟡 MEDIUM PRIORITY (P1) - Important for Enterprise Features
 
+### Worker Backend Abstraction & Kafka Integration
+
+- [ ] **Backend Interface & Factory** | Estimated: 4 hours
+  - Dependencies: existing `LocalWorker`, `RayWorker`, `CeleryWorker`
+  - Scope: Introduce an abstract worker interface and a factory that selects backend via `WORKER_PROVIDER`
+  - Security Impact: Enables consistent auth/rate-limit/audit flows across backends
+
+- [ ] **Kafka Worker Backend** | Estimated: 6 hours
+  - Dependencies: Backend interface & factory
+  - Scope: Add Kafka-based backend with request/response topics and correlation IDs; support eager mode that delegates to local for single-process
+  - Security Impact: Requires secure Kafka config (TLS/SASL) and input validation for message payloads
+
+- [ ] **Task Status via Kafka** | Estimated: 4 hours
+  - Dependencies: Kafka backend
+  - Scope: Implement non-blocking polling on response topic in status endpoint to resolve task results
+  - Security Impact: Validate and sanitize payloads; protect against oversized messages
+
+- [ ] **Documentation & Examples** | Estimated: 2 hours
+  - Dependencies: Kafka backend
+  - Scope: Update README with env vars and example deployment for Kafka worker
+  - Security Impact: Document secure configurations (TLS/SASL)
+
 ### Monitoring & Observability
 
 - [ ] **Application Monitoring**

@@ -42,7 +42,19 @@ COPY app/ ./app/
 COPY run.py ./run.py
 
 # Create entrypoint script to start API (Ray runs in-process local mode)
-RUN /bin/sh -lc 'cat > /app/entrypoint.sh <<"EOF"\n#!/usr/bin/env bash\nset -euo pipefail\n\n# Prepare directories\nmkdir -p /tmp/ray/spill || true\n\n# Ensure API sees auto address; app will fall back to local mode if needed\nexport RAY_ADDRESS=${RAY_ADDRESS:-auto}\nexport NUM_WORKERS=${NUM_WORKERS:-1}\n\n# Start API\nexec python run.py --workers ${NUM_WORKERS} --host 0.0.0.0 --port 8000\nEOF\n' && chmod +x /app/entrypoint.sh
+RUN echo '#!/usr/bin/env bash' > /app/entrypoint.sh && \
+    echo 'set -euo pipefail' >> /app/entrypoint.sh && \
+    echo '' >> /app/entrypoint.sh && \
+    echo '# Prepare directories' >> /app/entrypoint.sh && \
+    echo 'mkdir -p /tmp/ray/spill || true' >> /app/entrypoint.sh && \
+    echo '' >> /app/entrypoint.sh && \
+    echo '# Ensure API sees auto address; app will fall back to local mode if needed' >> /app/entrypoint.sh && \
+    echo 'export RAY_ADDRESS=${RAY_ADDRESS:-auto}' >> /app/entrypoint.sh && \
+    echo 'export NUM_WORKERS=${NUM_WORKERS:-1}' >> /app/entrypoint.sh && \
+    echo '' >> /app/entrypoint.sh && \
+    echo '# Start API' >> /app/entrypoint.sh && \
+    echo 'exec python run.py --workers ${NUM_WORKERS} --host 0.0.0.0 --port 8000' >> /app/entrypoint.sh && \
+    chmod +x /app/entrypoint.sh
 
 # Expose port
 EXPOSE 8000

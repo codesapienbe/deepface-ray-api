@@ -43,6 +43,18 @@ class Normalization(str, Enum):
 	VGGFACE2 = "VGGFace2"
 	ARCFACE = "ArcFace"
 
+class BackendProvider(str, Enum):
+	RAY = "ray"
+	CELERY = "celery"
+	LOCAL = "local"
+	KAFKA = "kafka"
+
+class TaskStatus(str, Enum):
+	PENDING = "pending"
+	SUCCESS = "success"
+	ERROR = "error"
+	NOT_FOUND = "not_found"
+
 class VerifyRequest(BaseModel):
 	model_name: ModelName = ModelName.SFACE
 	detector_backend: DetectorBackend = DetectorBackend.OPENCV
@@ -180,6 +192,45 @@ class ExtractEmbeddingResponse(BaseModel):
 	embedding: List[float]
 	facial_area: Dict[str, Any]
 
+# Task envelope models per operation
+class VerifyTaskResponse(BaseModel):
+	backend: BackendProvider
+	task_id: Optional[str] = None
+	status: TaskStatus
+	result: Optional[VerifyResponse] = None
+	error: Optional[str] = None
+
+class AnalyzeTaskResponse(BaseModel):
+	backend: BackendProvider
+	task_id: Optional[str] = None
+	status: TaskStatus
+	result: Optional[AnalyzeResponse] = None
+	error: Optional[str] = None
+
+class FindTaskResponse(BaseModel):
+	backend: BackendProvider
+	task_id: Optional[str] = None
+	status: TaskStatus
+	result: Optional[FindResponse] = None
+	error: Optional[str] = None
+
+class ExtractEmbeddingTaskResponse(BaseModel):
+	backend: BackendProvider
+	task_id: Optional[str] = None
+	status: TaskStatus
+	result: Optional[ExtractEmbeddingResponse] = None
+	error: Optional[str] = None
+
+class TaskStatusResponse(BaseModel):
+	task_id: str
+	backend: Optional[BackendProvider] = None
+	status: TaskStatus
+	kind: Optional[str] = None
+	result: Optional[Dict[str, Any]] = None
+	error: Optional[str] = None
+	created_at: Optional[float] = None
+	updated_at: Optional[float] = None
+
 # Encrypted payload models
 class EncryptedImage(BaseModel):
 	nonce: str
@@ -193,3 +244,26 @@ class SecureVerifyRequest(BaseModel):
 class SecureAnalyzeRequest(BaseModel):
 	image: EncryptedImage
 	options: AnalyzeRequest = AnalyzeRequest()
+
+# OOP Job request models for internal task execution
+class DbImage(BaseModel):
+	id: Optional[str] = None
+	image_bytes: bytes
+
+class VerifyJob(BaseModel):
+	img1_bytes: bytes
+	img2_bytes: bytes
+	options: VerifyRequest
+
+class AnalyzeJob(BaseModel):
+	img_bytes: bytes
+	options: AnalyzeRequest
+
+class FindJob(BaseModel):
+	img_bytes: bytes
+	db_images: List[DbImage]
+	options: FindRequest
+
+class ExtractEmbeddingJob(BaseModel):
+	img_bytes: bytes
+	options: ExtractEmbeddingRequest

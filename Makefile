@@ -25,6 +25,7 @@ start:
 	docker rm -f $(IMAGE_NAME) || true
 	docker run -d \
 		--name $(IMAGE_NAME) \
+		-v ~/.deepface:/root/.deepface \
 		-p 8000:8000 \
 		-e RAY_object_store_memory=1073741824 \
 		-e RAY_spill_dir=/tmp/ray/spill \
@@ -46,6 +47,8 @@ stop:
 restart:
 	$(MAKE) stop
 	$(MAKE) start
+
+
 
 deploy:
 	@test -n "$(REGISTRY)" || { echo "REGISTRY is required for deploy (e.g., REGISTRY=registry.example.com)"; exit 1; }

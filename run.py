@@ -13,8 +13,6 @@ import argparse
 import os
 import sys
 import uvicorn
-import ray
-import ssl
 
 
 def _tls_params_from_env() -> tuple[bool, str | None, str | None, str | None]:
@@ -53,20 +51,7 @@ def main():
     print(f"Ray Address: {args.ray_address}")
     print(f"Debug Mode: {args.debug}")
 
-    if not args.no_ray:
-        try:
-            # Test Ray connection
-            if args.ray_address == "auto":
-                print("Initializing Ray in local mode...")
-            else:
-                print(f"Connecting to Ray cluster at {args.ray_address}...")
-
-            ray.init(address=args.ray_address, ignore_reinit_error=True)
-            print(f"Ray initialized successfully")
-            ray.shutdown()
-        except Exception as e:
-            print(f"Warning: Ray initialization failed: {e}")
-            print("The API will still start but without Ray acceleration")
+    # Do not pre-initialize Ray here to keep memory footprint minimal; the app lifespan handles it.
 
     tls_enabled, certfile, keyfile, ca_certs = _tls_params_from_env()
 

@@ -16,6 +16,8 @@
   - Docker entrypoint no longer starts a Ray head; app uses Ray local mode to reduce overhead.
   - Reduced default `RAY_object_store_memory` to 256MB; capped threads via `OMP_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`, `MKL_NUM_THREADS=1`, and TensorFlow thread envs.
   - Default `NUM_WORKERS` set to 1; default model set to `SFace` for lighter memory footprint.
+- DeepFace fallbacks updated to avoid local I/O entirely: use in-memory base64 data URIs for retry paths in `verify_faces` and `find_faces`.
+- Added backend abstraction and factory selection; introduced Kafka worker backend (publish/subscribe via request/response topics with correlation IDs). New provider `kafka` selectable via `WORKER_PROVIDER`.
 
 [1.8.3] - 2025-08-13
 
@@ -104,7 +106,6 @@
   - Roles: admin, operator, viewer; helper dependency `require_roles`.
   - Optional enforcement via `AUTH_ENABLED` env var (default: false) to preserve existing behavior.
   - Expiring tokens (15 minutes by default) using HS256.
-  - Security: Authorization checks integrated into endpoints without changing responses.
 
 [1.0.1] - 2025-08-13
 
