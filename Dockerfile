@@ -67,5 +67,27 @@ ENV RAY_object_store_memory=268435456 \
     RAY_ADDRESS=auto \
     WORKER_PROVIDER=kafka
 
+
+# Download model weights
+RUN mkdir -p /root/.deepface/weights
+
+RUN mkdir -p /root/.deepface/weights \
+    && curl -L "https://github.com/serengil/deepface_models/releases/download/v1.0/arcface_weights.h5" \
+        -o /root/.deepface/weights/arcface_weights.h5 \
+    && curl -L "https://github.com/serengil/deepface_models/releases/download/v1.0/retinaface.h5" \
+        -o /root/.deepface/weights/retinaface.h5 \
+    && curl -L "https://github.com/serengil/deepface_models/releases/download/v1.0/facial_expression_model_weights.h5" \
+        -o /root/.deepface/weights/facial_expression_model_weights.h5 \
+    && curl -L "https://github.com/serengil/deepface_models/releases/download/v1.0/age_model_weights.h5" \
+        -o /root/.deepface/weights/age_model_weights.h5 \
+    && curl -L "https://github.com/serengil/deepface_models/releases/download/v1.0/gender_model_weights.h5" \
+        -o /root/.deepface/weights/gender_model_weights.h5 \
+    && curl -L "https://github.com/serengil/deepface_models/releases/download/v1.0/race_model_single_batch.h5" \
+        -o /root/.deepface/weights/race_model_single_batch.h5
+
+
+RUN mkdir -p /opt/ttn/ttn_tmp && \
+    chmod 777 /opt/ttn/ttn_tmp
+
 # Set entrypoint
 ENTRYPOINT ["/app/entrypoint.sh"]

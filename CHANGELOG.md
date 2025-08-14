@@ -1,5 +1,16 @@
 # Changelog
 
+[1.8.6] - 2025-08-14
+
+### Changed - P0 Observability & Logging
+- **Unified JSON Logging & Configurable Levels**: Standardized logging across app and server.
+  - Introduced environment-driven log level via `APP_LOG_LEVEL` (e.g., `DEBUG`, `INFO`).
+  - Applied JSON formatter to `uvicorn`, `uvicorn.error`, `uvicorn.access`, `fastapi`, `ray`, `asyncio`, and custom `access` logger.
+  - Disabled Uvicorn's default logging config so application handlers control formatting.
+  - `run.py` now respects `APP_LOG_LEVEL` or `--debug`; also supports `UVICORN_LOG_LEVEL` fallback.
+  - **Performance**: Minimal overhead; structured logs aid analysis without significant cost.
+  - **Security**: No sensitive data added to logs; preserves zero-trust posture.
+
 [1.8.5] - 2025-08-14
 
 ### Changed - P0 Worker Default & DevOps Alignment

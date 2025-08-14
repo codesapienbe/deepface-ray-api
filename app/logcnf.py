@@ -34,4 +34,11 @@ def configure_logging() -> None:
 	# Also keep console output for local dev
 	console = logging.StreamHandler()
 	console.setFormatter(JsonFormatter())
-	root.addHandler(console) 
+	root.addHandler(console)
+	# Align common library loggers with root configuration to ensure consistent JSON output
+	for name in ("uvicorn", "uvicorn.error", "uvicorn.access", "fastapi", "ray", "asyncio", "access"):
+		logger = logging.getLogger(name)
+		logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+		# Remove custom handlers so logs propagate to root JSON handlers
+		logger.handlers = []
+		logger.propagate = True 

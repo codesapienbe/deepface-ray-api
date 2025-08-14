@@ -53,6 +53,7 @@ start:
 		-e MAX_IMAGE_SIZE=1024 \
 		-e WORKER_PROVIDER=kafka \
 		-e KAFKA_BOOTSTRAP_SERVERS=$(KAFKA_BOOTSTRAP_SERVERS) \
+		-e APP_LOG_LEVEL=$(APP_LOG_LEVEL) \
 		-v /tmp/ray:/tmp/ray \
 		--shm-size=4g \
 		$(IMAGE_NAME):$(IMAGE_TAG)

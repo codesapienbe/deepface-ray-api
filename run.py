@@ -51,18 +51,30 @@ def main():
     print(f"Ray Address: {args.ray_address}")
     print(f"Debug Mode: {args.debug}")
 
+    # Determine effective log level for uvicorn from env or flag
+    app_log_level = os.getenv("APP_LOG_LEVEL")
+    # If --debug is set and APP_LOG_LEVEL is not provided, elevate app logging to DEBUG too
+    if args.debug and not app_log_level:
+        os.environ["APP_LOG_LEVEL"] = "DEBUG"
+        app_log_level = "DEBUG"
+    if app_log_level:
+        effective_log_level = app_log_level.lower()
+    else:
+        effective_log_level = os.getenv("UVICORN_LOG_LEVEL", "debug" if args.debug else "info").lower()
+
     # Do not pre-initialize Ray here to keep memory footprint minimal; the app lifespan handles it.
 
     tls_enabled, certfile, keyfile, ca_certs = _tls_params_from_env()
 
-    # Start the server
+    # Start the server. Disable uvicorn's default log_config so our app's JSON logger takes effect.
     uvicorn.run(
         "app.main:app",
         host=args.host,
         port=args.port,
         reload=args.debug,
         workers=1,  # Always use 1 uvicorn worker with Ray
-        log_level="debug" if args.debug else "info",
+        log_level=effective_log_level,
+        log_config=None,
         ssl_certfile=certfile if tls_enabled else None,
         ssl_keyfile=keyfile if tls_enabled else None,
         ssl_ca_certs=ca_certs if tls_enabled and ca_certs else None,
