@@ -41,7 +41,7 @@ try:
 except Exception:
     num_workers = 1
 # Worker selection
-WORKER_PROVIDER = os.getenv("WORKER_PROVIDER", "kafka").lower()
+WORKER_PROVIDER = os.getenv("WORKER_PROVIDER", "ray").lower()
 WORKER_FALLBACK = os.getenv("WORKER_FALLBACK", "true").lower() == "true"
 
 # Limits
@@ -330,19 +330,40 @@ async def verify_faces(
                 task_id = register_celery_task("verify", async_result.id)
                 return {"backend": provider, "task_id": task_id}
             if provider == "kafka":
-                from .tasks import KafkaWorker
-                worker = KafkaWorker()
-                meta = worker.verify_faces(
-                    img1_bytes=img1_bytes,
-                    img2_bytes=img2_bytes,
-                    model_name=str(request.model_name.value),
-                    detector_backend=str(request.detector_backend.value),
-                    distance_metric=str(request.distance_metric.value),
-                    enforce_detection=request.enforce_detection,
-                    align=request.align,
-                    normalization=str(request.normalization.value)
-                )
-                return {"backend": provider, "task_id": meta.get("task_id")}
+                from .tasks import KafkaWorker, register_celery_task, register_local_result, celery_app, verify_faces_task
+                try:
+                    worker = KafkaWorker()
+                    meta = worker.verify_faces(
+                        img1_bytes=img1_bytes,
+                        img2_bytes=img2_bytes,
+                        model_name=str(request.model_name.value),
+                        detector_backend=str(request.detector_backend.value),
+                        distance_metric=str(request.distance_metric.value),
+                        enforce_detection=request.enforce_detection,
+                        align=request.align,
+                        normalization=str(request.normalization.value)
+                    )
+                    return {"backend": provider, "task_id": meta.get("task_id")}
+                except Exception as e:
+                    logger.warning(f"Kafka path unavailable, falling back to Celery: {e}")
+                    if celery_app.conf.task_always_eager:
+                        result = LocalWorker().verify_faces(
+                            img1_bytes=img1_bytes,
+                            img2_bytes=img2_bytes,
+                            model_name=str(request.model_name.value),
+                            detector_backend=str(request.detector_backend.value),
+                            distance_metric=str(request.distance_metric.value),
+                            enforce_detection=request.enforce_detection,
+                            align=request.align,
+                            normalization=str(request.normalization.value)
+                        )
+                        task_id = register_local_result("verify", result)
+                        return {"backend": "local", "task_id": task_id, "result": result}
+                    async_result = verify_faces_task.delay(
+                        img1_bytes, img2_bytes, str(request.model_name.value), str(request.detector_backend.value), str(request.distance_metric.value), request.enforce_detection, request.align, str(request.normalization.value)
+                    )
+                    task_id = register_celery_task("verify", async_result.id)
+                    return {"backend": "celery", "task_id": task_id}
             # local
             result = LocalWorker().verify_faces(
                 img1_bytes=img1_bytes,
@@ -434,17 +455,38 @@ async def analyze_face(
                 return {"backend": provider, "task_id": task_id}
             if provider == "kafka":
                 from .tasks import KafkaWorker
-                worker = KafkaWorker()
-                meta = worker.analyze_face(
-                    img_bytes=img_bytes,
-                    actions=[a.value for a in request.actions],
-                    model_name=str(request.model_name.value),
-                    detector_backend=str(request.detector_backend.value),
-                    enforce_detection=request.enforce_detection,
-                    align=request.align,
-                    silent=request.silent
-                )
-                return {"backend": provider, "task_id": meta.get("task_id")}
+                try:
+                    worker = KafkaWorker()
+                    meta = worker.analyze_face(
+                        img_bytes=img_bytes,
+                        actions=[a.value for a in request.actions],
+                        model_name=str(request.model_name.value),
+                        detector_backend=str(request.detector_backend.value),
+                        enforce_detection=request.enforce_detection,
+                        align=request.align,
+                        silent=request.silent
+                    )
+                    return {"backend": provider, "task_id": meta.get("task_id")}
+                except Exception as e:
+                    logger.warning(f"Kafka path unavailable, falling back to Celery: {e}")
+                    from .tasks import register_celery_task, register_local_result, celery_app, analyze_face_task
+                    if celery_app.conf.task_always_eager:
+                        result = LocalWorker().analyze_face(
+                            img_bytes=img_bytes,
+                            actions=[a.value for a in request.actions],
+                            model_name=str(request.model_name.value),
+                            detector_backend=str(request.detector_backend.value),
+                            enforce_detection=request.enforce_detection,
+                            align=request.align,
+                            silent=request.silent
+                        )
+                        task_id = register_local_result("analyze", result)
+                        return {"backend": "local", "task_id": task_id, "result": result}
+                    async_result = analyze_face_task.delay(
+                        img_bytes, [a.value for a in request.actions], str(request.model_name.value), str(request.detector_backend.value), request.enforce_detection, request.align, request.silent
+                    )
+                    task_id = register_celery_task("analyze", async_result.id)
+                    return {"backend": "celery", "task_id": task_id}
             # local
             result = LocalWorker().analyze_face(
                 img_bytes=img_bytes,
@@ -545,20 +587,42 @@ async def find_faces(
                 task_id = register_celery_task("find", async_result.id)
                 return {"backend": provider, "task_id": task_id}
             if provider == "kafka":
-                from .tasks import KafkaWorker
-                worker = KafkaWorker()
-                meta = worker.find_faces(
-                    img_bytes=query_bytes,
-                    db_images=db_images,
-                    model_name=str(request.model_name.value),
-                    detector_backend=str(request.detector_backend.value),
-                    distance_metric=str(request.distance_metric.value),
-                    enforce_detection=request.enforce_detection,
-                    align=request.align,
-                    normalization=str(request.normalization.value),
-                    silent=request.silent
-                )
-                return {"backend": provider, "task_id": meta.get("task_id")}
+                from .tasks import KafkaWorker, register_celery_task, register_local_result, celery_app, find_faces_task
+                try:
+                    worker = KafkaWorker()
+                    meta = worker.find_faces(
+                        img_bytes=query_bytes,
+                        db_images=db_images,
+                        model_name=str(request.model_name.value),
+                        detector_backend=str(request.detector_backend.value),
+                        distance_metric=str(request.distance_metric.value),
+                        enforce_detection=request.enforce_detection,
+                        align=request.align,
+                        normalization=str(request.normalization.value),
+                        silent=request.silent
+                    )
+                    return {"backend": provider, "task_id": meta.get("task_id")}
+                except Exception as e:
+                    logger.warning(f"Kafka path unavailable, falling back to Celery: {e}")
+                    if celery_app.conf.task_always_eager:
+                        result = LocalWorker().find_faces(
+                            img_bytes=query_bytes,
+                            db_images=db_images,
+                            model_name=str(request.model_name.value),
+                            detector_backend=str(request.detector_backend.value),
+                            distance_metric=str(request.distance_metric.value),
+                            enforce_detection=request.enforce_detection,
+                            align=request.align,
+                            normalization=str(request.normalization.value),
+                            silent=request.silent
+                        )
+                        task_id = register_local_result("find", result)
+                        return {"backend": "local", "task_id": task_id, "result": result}
+                    async_result = find_faces_task.delay(
+                        query_bytes, db_images, str(request.model_name.value), str(request.detector_backend.value), str(request.distance_metric.value), request.enforce_detection, request.align, str(request.normalization.value), request.silent
+                    )
+                    task_id = register_celery_task("find", async_result.id)
+                    return {"backend": "celery", "task_id": task_id}
             result = LocalWorker().find_faces(
                 img_bytes=query_bytes,
                 db_images=db_images,
@@ -646,16 +710,35 @@ async def extract_face_embedding(
                 task_id = register_celery_task("extract", async_result.id)
                 return {"backend": provider, "task_id": task_id}
             if provider == "kafka":
-                from .tasks import KafkaWorker
-                meta = KafkaWorker().extract_embedding(
-                    img_bytes=img_bytes,
-                    model_name=str(request.model_name.value),
-                    detector_backend=str(request.detector_backend.value),
-                    enforce_detection=request.enforce_detection,
-                    align=request.align,
-                    normalization=str(request.normalization.value)
-                )
-                return {"backend": provider, "task_id": meta.get("task_id")}
+                from .tasks import KafkaWorker, register_celery_task, register_local_result, celery_app, extract_embedding_task
+                try:
+                    meta = KafkaWorker().extract_embedding(
+                        img_bytes=img_bytes,
+                        model_name=str(request.model_name.value),
+                        detector_backend=str(request.detector_backend.value),
+                        enforce_detection=request.enforce_detection,
+                        align=request.align,
+                        normalization=str(request.normalization.value)
+                    )
+                    return {"backend": provider, "task_id": meta.get("task_id")}
+                except Exception as e:
+                    logger.warning(f"Kafka path unavailable, falling back to Celery: {e}")
+                    if celery_app.conf.task_always_eager:
+                        result = LocalWorker().extract_embedding(
+                            img_bytes=img_bytes,
+                            model_name=str(request.model_name.value),
+                            detector_backend=str(request.detector_backend.value),
+                            enforce_detection=request.enforce_detection,
+                            align=request.align,
+                            normalization=str(request.normalization.value)
+                        )
+                        task_id = register_local_result("extract", result)
+                        return {"backend": "local", "task_id": task_id, "result": result}
+                    async_result = extract_embedding_task.delay(
+                        img_bytes, str(request.model_name.value), str(request.detector_backend.value), request.enforce_detection, request.align, str(request.normalization.value)
+                    )
+                    task_id = register_celery_task("extract", async_result.id)
+                    return {"backend": "celery", "task_id": task_id}
             result = LocalWorker().extract_embedding(
                 img_bytes=img_bytes,
                 model_name=str(request.model_name.value),

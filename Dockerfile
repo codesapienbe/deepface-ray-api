@@ -50,7 +50,7 @@ RUN echo '#!/usr/bin/env bash' > /app/entrypoint.sh && \
     echo '' >> /app/entrypoint.sh && \
     echo '# Ensure API sees auto address; app will fall back to local mode if needed' >> /app/entrypoint.sh && \
     echo 'export RAY_ADDRESS=${RAY_ADDRESS:-auto}' >> /app/entrypoint.sh && \
-    echo 'export NUM_WORKERS=${NUM_WORKERS:-1}' >> /app/entrypoint.sh && \
+    echo 'export NUM_WORKERS=${NUM_WORKERS:-2}' >> /app/entrypoint.sh && \
     echo '' >> /app/entrypoint.sh && \
     echo '# Start API' >> /app/entrypoint.sh && \
     echo 'exec python run.py --workers ${NUM_WORKERS} --host 0.0.0.0 --port 8000' >> /app/entrypoint.sh && \
@@ -60,12 +60,12 @@ RUN echo '#!/usr/bin/env bash' > /app/entrypoint.sh && \
 EXPOSE 8000
 
 # Environment defaults
-ENV RAY_object_store_memory=268435456 \
+ENV RAY_object_store_memory=1073741824 \
     RAY_spill_dir=/tmp/ray/spill \
     RAY_enable_object_reconstruction=1 \
     NUM_WORKERS=1 \
     RAY_ADDRESS=auto \
-    WORKER_PROVIDER=kafka
+    WORKER_PROVIDER=ray
 
 
 # Download model weights

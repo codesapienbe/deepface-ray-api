@@ -6,6 +6,10 @@ REGISTRY ?=
 KAFKA_BOOTSTRAP_SERVERS ?= host.docker.internal:9092
 KAFKA_IMAGE ?= bitnami/kafka:latest
 KAFKA_CONTAINER_NAME ?= kafka
+# Named volumes for persistence
+KAFKA_VOLUME ?= kafka-data
+API_VOLUME_DEEPFACE ?= deepface-cache
+API_VOLUME_RAY ?= ray-spill
 
 .PHONY: clean verify install start stop deploy restart
 
@@ -25,10 +29,15 @@ install:
 	docker build -t $(IMAGE_NAME):$(IMAGE_TAG) .
 
 start:
+	# Create volumes if not present
+	docker volume create $(KAFKA_VOLUME) >/dev/null
+	docker volume create $(API_VOLUME_DEEPFACE) >/dev/null
+	docker volume create $(API_VOLUME_RAY) >/dev/null
 	# Single-node Kafka (KRaft) with external access via host.docker.internal:9092
 	docker rm -f $(KAFKA_CONTAINER_NAME) || true
 	docker run -d \
 		--name $(KAFKA_CONTAINER_NAME) \
+		--hostname $(KAFKA_CONTAINER_NAME) \
 		-p 9092:9092 \
 		-e KAFKA_CFG_NODE_ID=0 \
 		-e KAFKA_CFG_PROCESS_ROLES=broker,controller \
@@ -38,23 +47,25 @@ start:
 		-e KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER \
 		-e KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT \
 		-e ALLOW_PLAINTEXT_LISTENER=yes \
+		-v $(KAFKA_VOLUME):/bitnami/kafka \
 		$(KAFKA_IMAGE)
 	# Start API (DeepFace Ray API) 
 	docker rm -f $(IMAGE_NAME) || true
 	docker run -d \
 		--name $(IMAGE_NAME) \
-		-v ~/.deepface:/root/.deepface \
+		--hostname $(IMAGE_NAME) \
+		-v $(API_VOLUME_DEEPFACE):/root/.deepface \
 		-p 8000:8000 \
 		-e RAY_object_store_memory=1073741824 \
 		-e RAY_spill_dir=/tmp/ray/spill \
 		-e RAY_enable_object_reconstruction=1 \
-		-e NUM_WORKERS=1 \
+		-e NUM_WORKERS=2 \
 		-e RAY_ADDRESS=auto \
 		-e MAX_IMAGE_SIZE=1024 \
-		-e WORKER_PROVIDER=kafka \
+		-e WORKER_PROVIDER=ray \
 		-e KAFKA_BOOTSTRAP_SERVERS=$(KAFKA_BOOTSTRAP_SERVERS) \
 		-e APP_LOG_LEVEL=$(APP_LOG_LEVEL) \
-		-v /tmp/ray:/tmp/ray \
+		-v $(API_VOLUME_RAY):/tmp/ray \
 		--shm-size=4g \
 		$(IMAGE_NAME):$(IMAGE_TAG)
 

@@ -15,8 +15,7 @@ from threading import RLock
 import json
 from .models import VerifyJob, AnalyzeJob, FindJob, ExtractEmbeddingJob
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging (root handlers configured in app.logcnf)
 logger = logging.getLogger(__name__)
 
 # Celery application configured to run tasks eagerly by default (no external broker required)
@@ -105,6 +104,11 @@ def _get_kafka_producer():
 		bootstrap_servers=_get_kafka_bootstrap_servers(),
 		value_serializer=lambda v: json.dumps(v).encode("utf-8"),
 		key_serializer=lambda v: v.encode("utf-8") if isinstance(v, str) else v,
+		acks='all',
+		retries=0,
+		request_timeout_ms=int(os.getenv("KAFKA_REQUEST_TIMEOUT_MS", "2000")),
+		max_block_ms=int(os.getenv("KAFKA_MAX_BLOCK_MS", "2000")),
+		api_version_auto_timeout_ms=int(os.getenv("KAFKA_API_VERSION_TIMEOUT_MS", "2000")),
 	)
 	return _KAFKA_PRODUCER
 
@@ -123,6 +127,10 @@ def _get_kafka_consumer():
 		group_id=group_id,
 		auto_offset_reset=os.getenv("KAFKA_AUTO_OFFSET_RESET", "earliest"),
 		value_deserializer=lambda v: json.loads(v.decode("utf-8")),
+		request_timeout_ms=int(os.getenv("KAFKA_REQUEST_TIMEOUT_MS", "2000")),
+		api_version_auto_timeout_ms=int(os.getenv("KAFKA_API_VERSION_TIMEOUT_MS", "2000")),
+		session_timeout_ms=int(os.getenv("KAFKA_SESSION_TIMEOUT_MS", "3000")),
+		max_poll_interval_ms=int(os.getenv("KAFKA_MAX_POLL_INTERVAL_MS", "3000")),
 	)
 	return _KAFKA_CONSUMER
 
@@ -775,8 +783,12 @@ class KafkaWorker:
 			"payload": payload,
 			"created_at": _now_ts(),
 		}
-		self.producer.send(self.request_topic, key=correlation_id, value=message)
-		self.producer.flush()
+		future = self.producer.send(self.request_topic, key=correlation_id, value=message)
+		try:
+			future.get(timeout=float(os.getenv("KAFKA_PRODUCE_TIMEOUT_SEC", "2")))
+		except Exception as e:
+			logger.warning(f"Kafka produce failed quickly: {e}")
+			raise RuntimeError("Kafka produce failed")
 		register_kafka_task(kind, correlation_id)
 		return {"task_id": correlation_id}
 

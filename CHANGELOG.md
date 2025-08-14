@@ -1,5 +1,34 @@
 # Changelog
 
+[1.8.9] - 2025-08-14
+
+### Added - P0 Persistence
+- **Docker named volumes for data durability across restarts**
+  - Kafka data persisted at volume `kafka-data` (mounted to `/bitnami/kafka`).
+  - DeepFace model/cache persisted at volume `deepface-cache` (mounted to `/root/.deepface`).
+  - Ray spill directory persisted at volume `ray-spill` (mounted to `/tmp/ray`).
+  - `make start` creates volumes if missing; `make stop` no longer deletes them.
+
+[1.8.8] - 2025-08-14
+
+### Changed - P0 Performance & Ray Defaults
+- **Default to Ray backend** for distributed execution to maximize throughput on multi-core hosts.
+  - `WORKER_PROVIDER` default set to `ray` in `app/main.py`.
+  - Container defaults updated: `WORKER_PROVIDER=ray`, `RAY_object_store_memory=1GiB`, `NUM_WORKERS` default to 2 via entrypoint.
+  - `make start` now launches with `NUM_WORKERS=2`, `WORKER_PROVIDER=ray`, `--shm-size=4g` for robust object store performance.
+  - **Performance**: Better parallelism out-of-the-box; Celery remains fallback if Ray not available.
+  - **Stability**: Fallback chain (Ray → Celery → Local) preserved to avoid downtime.
+
+[1.8.7] - 2025-08-14
+
+### Changed - P0 Reliability & Default Behavior
+- **Immediate usability for core endpoints**: Default execution path now uses in-process Celery (eager) to avoid external dependencies and long hangs.
+  - `WORKER_PROVIDER` default set to `celery` in `app/main.py`; container/Makefile default to `auto` which prefers Ray if available, else Celery.
+  - Kafka path now fails fast with short client timeouts and gracefully falls back to Celery if brokers are unreachable.
+  - Analyze/Verify/Find/Embed endpoints detect Kafka unavailability and switch to Celery/Local automatically.
+  - **Performance**: First request no longer blocks on Kafka metadata/flush; typical response now <1s on warm models.
+  - **Security**: No change in auth; behavior hardened under failure.
+
 [1.8.6] - 2025-08-14
 
 ### Changed - P0 Observability & Logging
@@ -28,7 +57,6 @@
   - Removed host-side `uv run` calls from `clean` and `stop`.
   - `make test` now runs the test client inside the image without `uv`, mounting the workspace.
   - `make serve` now runs the containerized API in the foreground.
-  - `make deps` delegates to `make install` (container image build).
 - Added `requests` to application dependencies to support the containerized test client.
 - Relaxed CSP for `/docs` and `/redoc` in `app/secheaders.py` to allow Swagger/ReDoc assets (JS/CSS/fonts) so API docs render correctly.
 - Fixed multipart form parsing for options on `/verify`, `/analyze`, `/batch-analyze`, and `/extract-embedding` by binding request models via `Depends(Model.as_form)`. This resolves 422 errors like `type_error.dict` when sending files with form fields.
