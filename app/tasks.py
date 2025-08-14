@@ -756,6 +756,17 @@ class KafkaWorker:
 		self.producer = _get_kafka_producer()
 		self.request_topic = os.getenv("KAFKA_REQUEST_TOPIC", "deepface.requests")
 
+	def is_ready(self) -> bool:
+		"""Best-effort readiness check: verifies producer is bootstrapped to a broker."""
+		try:
+			bootstrap_connected = getattr(self.producer, "bootstrap_connected", None)
+			if callable(bootstrap_connected):
+				return bool(bootstrap_connected())
+			return True
+		except Exception as e:
+			logger.warning(f"Kafka producer not ready: {e}")
+			return False
+
 	def _send(self, kind: str, payload: Dict[str, Any]) -> Dict[str, Any]:
 		correlation_id = f"kafka-{uuid.uuid4()}"
 		message = {

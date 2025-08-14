@@ -64,7 +64,8 @@ ENV RAY_object_store_memory=268435456 \
     RAY_spill_dir=/tmp/ray/spill \
     RAY_enable_object_reconstruction=1 \
     NUM_WORKERS=1 \
-    RAY_ADDRESS=auto
+    RAY_ADDRESS=auto \
+    WORKER_PROVIDER=kafka
 
 # Set entrypoint
 ENTRYPOINT ["/app/entrypoint.sh"]

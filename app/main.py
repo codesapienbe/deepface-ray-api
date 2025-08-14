@@ -41,7 +41,7 @@ try:
 except Exception:
     num_workers = 1
 # Worker selection
-WORKER_PROVIDER = os.getenv("WORKER_PROVIDER", "auto").lower()
+WORKER_PROVIDER = os.getenv("WORKER_PROVIDER", "kafka").lower()
 WORKER_FALLBACK = os.getenv("WORKER_FALLBACK", "true").lower() == "true"
 
 # Limits
@@ -204,7 +204,19 @@ def get_worker() -> tuple[str, Any]:
         return ("celery", CeleryWorker())
     if provider == "kafka":
         from .tasks import KafkaWorker
-        return ("kafka", KafkaWorker())
+        try:
+            kw = KafkaWorker()
+            if hasattr(kw, "is_ready") and not kw.is_ready():
+                raise RuntimeError("Kafka not ready")
+            return ("kafka", kw)
+        except Exception as e:
+            if WORKER_FALLBACK:
+                # Fallback chain: Celery -> Local
+                try:
+                    return ("celery", CeleryWorker())
+                except Exception:
+                    return ("local", LocalWorker())
+            raise HTTPException(status_code=503, detail=f"Kafka provider selected but unavailable: {e}")
     if provider == "local":
         return ("local", LocalWorker())
     # Auto mode

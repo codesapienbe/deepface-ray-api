@@ -1,5 +1,15 @@
 # Changelog
 
+[1.8.5] - 2025-08-14
+
+### Changed - P0 Worker Default & DevOps Alignment
+- **Default Worker Provider: Kafka**: Switched default `WORKER_PROVIDER` to `kafka` in `app/main.py`.
+  - Docker image now sets `WORKER_PROVIDER=kafka` by default.
+  - `make start` exports `WORKER_PROVIDER=kafka` and `KAFKA_BOOTSTRAP_SERVERS`.
+  - README updated with Kafka environment variables and defaults.
+  - Security: Remember to configure TLS/SASL for Kafka in production (brokers, creds, CA certs).
+- **Automatic Fallback**: If Kafka is selected but unavailable, the app now falls back to in-process Celery (no external broker) and then to Local if needed.
+
 [1.8.4] - 2025-08-13
 
 ### Changed - P0 Containerization Tooling

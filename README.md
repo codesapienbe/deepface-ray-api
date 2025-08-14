@@ -1,6 +1,6 @@
 # DeepFace Ray API
 
-A scalable FastAPI application that provides a distributed API for DeepFace facial recognition and analysis using Ray for distributed computing.
+A scalable FastAPI application that provides a distributed API for DeepFace facial recognition and analysis. Default worker backend is Kafka, with support for Ray, Celery, and Local backends.
 
 ## Features
 
@@ -125,6 +125,12 @@ curl -X POST "http://localhost:8000/batch-analyze" \
 
 ### Environment Variables
 
+- `WORKER_PROVIDER`: Worker backend selection (default: "kafka"). Options: `kafka`, `ray`, `celery`, `local`. If `kafka` is selected but brokers are unreachable, the app automatically falls back to in-process Celery; if Celery is disabled, it falls back to Local.
+- `KAFKA_BOOTSTRAP_SERVERS`: Comma-separated broker list (default: `localhost:9092`).
+- `KAFKA_REQUEST_TOPIC`: Topic for requests (default: `deepface.requests`).
+- `KAFKA_RESPONSE_TOPIC`: Topic for responses (default: `deepface.responses`).
+- `KAFKA_GROUP_ID`: Consumer group id for response polling (default: `deepface-api`).
+- `KAFKA_AUTO_OFFSET_RESET`: Consumer start policy (default: `earliest`).
 - `RAY_ADDRESS`: Ray cluster address (default: "auto"). For external clusters, set e.g. `RAY_ADDRESS=<head-ip>:6379`.
 - `NUM_WORKERS`: Number of DeepFace workers (default: 1)
 - `MAX_IMAGE_SIZE`: Maximum image size for processing (default: 1024)
