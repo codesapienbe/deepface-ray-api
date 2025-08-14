@@ -1,5 +1,17 @@
 # Changelog
 
+[1.8.10] - 2025-08-14
+
+### Fixed - P0 DeepFace Robustness
+- **Resolve 'tuple' object has no attribute 'shape' in Ray verify path**
+  - Hardened `app/tasks.py` image handling: validated NumPy arrays (HxWx3, uint8, contiguous) before DeepFace calls.
+  - Implemented multi-variant strategy for `verify` and `represent`:
+    - Try BGR ndarray → RGB ndarray → in-memory base64 data URI.
+    - Iterate detector backends in safe order: requested → retinaface → mtcnn → mediapipe → opencv.
+  - Added concise debug logs with array shapes and backend used.
+  - Final fallback: manual embedding comparison with conservative thresholds when DeepFace.verify path fails.
+  - Security: No file-system I/O for fallbacks; all operations in-memory.
+
 [1.8.9] - 2025-08-14
 
 ### Added - P0 Persistence
@@ -74,7 +86,6 @@
 - Consolidated Ray and FastAPI into a single Docker image and entrypoint.
   - Container starts a local Ray head and then launches the API.
   - No docker-compose required for default single-node deployment.
-- Updated `Makefile run` to use `docker run` for a single-container workflow, aligning dev and prod.
 
 [1.8.2] - 2025-08-13
 

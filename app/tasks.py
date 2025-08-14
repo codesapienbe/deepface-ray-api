@@ -265,76 +265,104 @@ class LocalWorker:
 		return 0.68
 
 	def _verify_with_variants(self, img1_bgr: np.ndarray, img2_bgr: np.ndarray, img1_bytes: bytes, img2_bytes: bytes, *, model_name: str, detector_backend: str, distance_metric: str, enforce_detection: bool, align: bool, normalization: str) -> Dict[str, Any]:
-		# Attempt 1: BGR ndarray (preferred)
-		try:
-			return DeepFace.verify(
-				img1_path=img1_bgr,
-				img2_path=img2_bgr,
-				model_name=model_name,
-				detector_backend=detector_backend,
-				distance_metric=distance_metric,
-				enforce_detection=enforce_detection,
-				align=align,
-				normalization=normalization,
-			)
-		except (AttributeError, TypeError, ValueError) as e1:
-			logger.debug(f"DeepFace.verify with BGR ndarray failed: {e1}")
-			# Attempt 2: RGB ndarray
+		# Normalize and validate arrays
+		if not isinstance(img1_bgr, np.ndarray) or not isinstance(img2_bgr, np.ndarray):
+			raise ValueError("Input images must be numpy arrays")
+		if img1_bgr.ndim != 3 or img2_bgr.ndim != 3:
+			raise ValueError("Input images must be HxWx3 arrays")
+		if img1_bgr.shape[2] != 3 or img2_bgr.shape[2] != 3:
+			raise ValueError("Input images must have 3 channels")
+		img1_bgr = np.ascontiguousarray(img1_bgr, dtype=np.uint8)
+		img2_bgr = np.ascontiguousarray(img2_bgr, dtype=np.uint8)
+
+		# Candidate detector backends to try (unique, preserving order)
+		preferred = [detector_backend, "retinaface", "mtcnn", "mediapipe", "opencv"]
+		seen = set()
+		candidate_backends = []
+		for b in preferred:
+			if b and b not in seen:
+				candidate_backends.append(b)
+				seen.add(b)
+
+		last_error: Optional[Exception] = None
+		for backend in candidate_backends:
 			try:
-				img1_rgb = cv2.cvtColor(img1_bgr, cv2.COLOR_BGR2RGB)
-				img2_rgb = cv2.cvtColor(img2_bgr, cv2.COLOR_BGR2RGB)
+				logger.debug(f"DeepFace.verify try backend={backend} bgr shapes: {img1_bgr.shape}, {img2_bgr.shape}")
 				return DeepFace.verify(
-					img1_path=img1_rgb,
-					img2_path=img2_rgb,
+					img1_path=img1_bgr,
+					img2_path=img2_bgr,
 					model_name=model_name,
-					detector_backend=detector_backend,
+					detector_backend=backend,
 					distance_metric=distance_metric,
 					enforce_detection=enforce_detection,
 					align=align,
 					normalization=normalization,
 				)
-			except (AttributeError, TypeError, ValueError) as e2:
-				logger.debug(f"DeepFace.verify with RGB ndarray failed: {e2}")
-				# Attempt 3: base64 data URI (in-memory, no disk)
+			except (AttributeError, TypeError, ValueError) as e1:
+				last_error = e1
+				logger.debug(f"DeepFace.verify (BGR) failed with backend={backend}: {e1}")
+				# Try RGB ndarray
 				try:
-					b64_1 = "data:image/jpeg;base64," + base64.b64encode(img1_bytes).decode("utf-8")
-					b64_2 = "data:image/jpeg;base64," + base64.b64encode(img2_bytes).decode("utf-8")
+					img1_rgb = cv2.cvtColor(img1_bgr, cv2.COLOR_BGR2RGB)
+					img2_rgb = cv2.cvtColor(img2_bgr, cv2.COLOR_BGR2RGB)
+					logger.debug(f"DeepFace.verify try backend={backend} rgb shapes: {img1_rgb.shape}, {img2_rgb.shape}")
 					return DeepFace.verify(
-						img1_path=b64_1,
-						img2_path=b64_2,
+						img1_path=img1_rgb,
+						img2_path=img2_rgb,
 						model_name=model_name,
-						detector_backend=detector_backend,
+						detector_backend=backend,
 						distance_metric=distance_metric,
 						enforce_detection=enforce_detection,
 						align=align,
 						normalization=normalization,
 					)
-				except (AttributeError, TypeError, ValueError) as e3:
-					logger.warning(f"DeepFace.verify failed across variants; falling back to manual embedding compare: {e3}")
-					# Final fallback: manual embeddings via represent to bypass verify path
-					emb1 = self._represent_with_variants(img1_bgr, img1_bytes, model_name=model_name, detector_backend=detector_backend, enforce_detection=enforce_detection, align=align, normalization=normalization)
-					emb2 = self._represent_with_variants(img2_bgr, img2_bytes, model_name=model_name, detector_backend=detector_backend, enforce_detection=enforce_detection, align=align, normalization=normalization)
-					# Normalize structure
-					vec1 = emb1[0]["embedding"] if isinstance(emb1, list) else emb1["embedding"]
-					vec2 = emb2[0]["embedding"] if isinstance(emb2, list) else emb2["embedding"]
-					metric = (distance_metric or "cosine").lower()
-					if metric == "cosine":
-						dist = self._cosine_distance(vec1, vec2)
-					elif metric == "euclidean_l2":
-						dist = self._euclidean_distance(vec1, vec2, l2_normalize=True)
-					else:
-						dist = self._euclidean_distance(vec1, vec2, l2_normalize=False)
-					threshold = self._default_threshold(model_name, metric)
-					return {
-						"verified": dist <= threshold,
-						"distance": dist,
-						"threshold": threshold,
-						"model": model_name,
-						"detector_backend": detector_backend,
-						"similarity_metric": metric,
-						"facial_areas": {},
-						"time": {},
-					}
+				except (AttributeError, TypeError, ValueError) as e2:
+					last_error = e2
+					logger.debug(f"DeepFace.verify (RGB) failed with backend={backend}: {e2}")
+					# Try base64 data URI
+					try:
+						b64_1 = "data:image/jpeg;base64," + base64.b64encode(img1_bytes).decode("utf-8")
+						b64_2 = "data:image/jpeg;base64," + base64.b64encode(img2_bytes).decode("utf-8")
+						logger.debug(f"DeepFace.verify try backend={backend} base64")
+						return DeepFace.verify(
+							img1_path=b64_1,
+							img2_path=b64_2,
+							model_name=model_name,
+							detector_backend=backend,
+							distance_metric=distance_metric,
+							enforce_detection=enforce_detection,
+							align=align,
+							normalization=normalization,
+						)
+					except (AttributeError, TypeError, ValueError) as e3:
+						last_error = e3
+						logger.debug(f"DeepFace.verify (base64) failed with backend={backend}: {e3}")
+
+		# Final fallback: manual embeddings via represent to bypass verify path
+		logger.warning(f"DeepFace.verify failed across all backends; falling back to manual embedding compare: {last_error}")
+		emb1 = self._represent_with_variants(img1_bgr, img1_bytes, model_name=model_name, detector_backend=detector_backend, enforce_detection=enforce_detection, align=align, normalization=normalization)
+		emb2 = self._represent_with_variants(img2_bgr, img2_bytes, model_name=model_name, detector_backend=detector_backend, enforce_detection=enforce_detection, align=align, normalization=normalization)
+		# Normalize structure
+		vec1 = emb1[0]["embedding"] if isinstance(emb1, list) else emb1["embedding"]
+		vec2 = emb2[0]["embedding"] if isinstance(emb2, list) else emb2["embedding"]
+		metric = (distance_metric or "cosine").lower()
+		if metric == "cosine":
+			dist = self._cosine_distance(vec1, vec2)
+		elif metric == "euclidean_l2":
+			dist = self._euclidean_distance(vec1, vec2, l2_normalize=True)
+		else:
+			dist = self._euclidean_distance(vec1, vec2, l2_normalize=False)
+		threshold = self._default_threshold(model_name, metric)
+		return {
+			"verified": dist <= threshold,
+			"distance": dist,
+			"threshold": threshold,
+			"model": model_name,
+			"detector_backend": detector_backend,
+			"similarity_metric": metric,
+			"facial_areas": {},
+			"time": {},
+		}
 
 	def _analyze_with_variants(self, img_bgr: np.ndarray, img_bytes: bytes, *, actions: List[str], model_name: str, detector_backend: str, enforce_detection: bool, align: bool, silent: bool) -> Any:
 		try:
@@ -374,38 +402,66 @@ class LocalWorker:
 				)
 
 	def _represent_with_variants(self, img_bgr: np.ndarray, img_bytes: bytes, *, model_name: str, detector_backend: str, enforce_detection: bool, align: bool, normalization: str) -> Any:
-		try:
-			return DeepFace.represent(
-				img_path=img_bgr,
-				model_name=model_name,
-				detector_backend=detector_backend,
-				enforce_detection=enforce_detection,
-				align=align,
-				normalization=normalization,
-			)
-		except (AttributeError, TypeError, ValueError) as e1:
-			logger.debug(f"DeepFace.represent with BGR ndarray failed: {e1}")
+		# Normalize and validate array
+		if not isinstance(img_bgr, np.ndarray):
+			raise ValueError("Input image must be a numpy array")
+		if img_bgr.ndim != 3 or img_bgr.shape[2] != 3:
+			raise ValueError("Input image must be HxWx3 array")
+		img_bgr = np.ascontiguousarray(img_bgr, dtype=np.uint8)
+
+		preferred = [detector_backend, "retinaface", "mtcnn", "mediapipe", "opencv"]
+		seen = set()
+		candidate_backends = []
+		for b in preferred:
+			if b and b not in seen:
+				candidate_backends.append(b)
+				seen.add(b)
+
+		last_error: Optional[Exception] = None
+		for backend in candidate_backends:
 			try:
-				img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+				logger.debug(f"DeepFace.represent try backend={backend} bgr shape: {img_bgr.shape}")
 				return DeepFace.represent(
-					img_path=img_rgb,
+					img_path=img_bgr,
 					model_name=model_name,
-					detector_backend=detector_backend,
+					detector_backend=backend,
 					enforce_detection=enforce_detection,
 					align=align,
 					normalization=normalization,
 				)
-			except (AttributeError, TypeError, ValueError) as e2:
-				logger.debug(f"DeepFace.represent with RGB ndarray failed: {e2}")
-				b64 = "data:image/jpeg;base64," + base64.b64encode(img_bytes).decode("utf-8")
-				return DeepFace.represent(
-					img_path=b64,
-					model_name=model_name,
-					detector_backend=detector_backend,
-					enforce_detection=enforce_detection,
-					align=align,
-					normalization=normalization,
-				)
+			except (AttributeError, TypeError, ValueError) as e1:
+				last_error = e1
+				logger.debug(f"DeepFace.represent (BGR) failed with backend={backend}: {e1}")
+				try:
+					img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+					logger.debug(f"DeepFace.represent try backend={backend} rgb shape: {img_rgb.shape}")
+					return DeepFace.represent(
+						img_path=img_rgb,
+						model_name=model_name,
+						detector_backend=backend,
+						enforce_detection=enforce_detection,
+						align=align,
+						normalization=normalization,
+					)
+				except (AttributeError, TypeError, ValueError) as e2:
+					last_error = e2
+					logger.debug(f"DeepFace.represent (RGB) failed with backend={backend}: {e2}")
+					try:
+						b64 = "data:image/jpeg;base64," + base64.b64encode(img_bytes).decode("utf-8")
+						logger.debug(f"DeepFace.represent try backend={backend} base64")
+						return DeepFace.represent(
+							img_path=b64,
+							model_name=model_name,
+							detector_backend=backend,
+							enforce_detection=enforce_detection,
+							align=align,
+							normalization=normalization,
+						)
+					except (AttributeError, TypeError, ValueError) as e3:
+						last_error = e3
+						logger.debug(f"DeepFace.represent (base64) failed with backend={backend}: {e3}")
+
+		raise ValueError(f"DeepFace.represent failed across all backends: {last_error}")
 
 	def verify_faces(self, job: Optional[VerifyJob] = None, **kwargs) -> Dict[str, Any]:
 		if job is None:
