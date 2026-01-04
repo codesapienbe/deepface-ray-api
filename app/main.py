@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 # Global variables for Ray actors
 deepface_workers: List[ray.actor.ActorHandle] = []
 _current_worker_idx: int = 0
+_worker_idx_lock = __import__('threading').Lock()  # Lock for thread-safe worker selection
 try:
     num_workers = int(os.getenv("NUM_WORKERS", "1"))
 except Exception:
@@ -191,12 +192,19 @@ def get_worker() -> tuple[str, Any]:
     """
     global _current_worker_idx
     provider = WORKER_PROVIDER
+
+    def _get_ray_worker():
+        """Thread-safe round-robin worker selection."""
+        global _current_worker_idx
+        with _worker_idx_lock:
+            worker = deepface_workers[_current_worker_idx % len(deepface_workers)]
+            _current_worker_idx = (_current_worker_idx + 1) % max(1, len(deepface_workers))
+        return worker
+
     # Explicit provider selection
     if provider == "ray":
         if ray.is_initialized() and deepface_workers:
-            worker = deepface_workers[_current_worker_idx % len(deepface_workers)]
-            _current_worker_idx = (_current_worker_idx + 1) % max(1, len(deepface_workers))
-            return "ray", worker
+            return "ray", _get_ray_worker()
         if WORKER_FALLBACK:
             return ("celery", CeleryWorker())
         raise HTTPException(status_code=503, detail="Ray provider selected but unavailable")
@@ -221,9 +229,7 @@ def get_worker() -> tuple[str, Any]:
         return ("local", LocalWorker())
     # Auto mode
     if ray.is_initialized() and deepface_workers:
-        worker = deepface_workers[_current_worker_idx % len(deepface_workers)]
-        _current_worker_idx = (_current_worker_idx + 1) % max(1, len(deepface_workers))
-        return "ray", worker
+        return "ray", _get_ray_worker()
     return ("celery", CeleryWorker())
 
 @app.get("/")
@@ -791,24 +797,71 @@ async def batch_analyze_faces(
     try:
         if len(images) > MAX_BATCH_IMAGES:
             raise HTTPException(status_code=422, detail=f"Too many images in batch. Max: {MAX_BATCH_IMAGES}")
-        # Process all images
-        tasks = []
+
+        # Process all images first
+        processed_images: List[bytes] = []
         for img in images:
             img_bytes = await process_uploaded_file(img)
-            worker = get_worker()
-            task = worker.analyze_face.remote(
-                img_bytes=img_bytes,
-                actions=request.actions,
-                model_name=request.model_name,
-                detector_backend=request.detector_backend,
-                enforce_detection=request.enforce_detection,
-                align=request.align,
-                silent=request.silent
-            )
-            tasks.append(task)
+            processed_images.append(img_bytes)
 
         def _call():
-            return ray.get(tasks)
+            provider, worker = get_worker()
+            actions_list = [a.value for a in request.actions]
+
+            if provider == "ray":
+                # Use Ray for parallel processing
+                tasks = []
+                for img_bytes in processed_images:
+                    task = worker.analyze_face.remote(
+                        img_bytes=img_bytes,
+                        actions=actions_list,
+                        model_name=str(request.model_name.value),
+                        detector_backend=str(request.detector_backend.value),
+                        enforce_detection=request.enforce_detection,
+                        align=request.align,
+                        silent=request.silent
+                    )
+                    tasks.append(task)
+                return ray.get(tasks)
+            else:
+                # For non-Ray providers, process sequentially
+                results = []
+                for img_bytes in processed_images:
+                    if provider == "celery":
+                        from .tasks import celery_app
+                        if celery_app.conf.task_always_eager:
+                            result = LocalWorker().analyze_face(
+                                img_bytes=img_bytes,
+                                actions=actions_list,
+                                model_name=str(request.model_name.value),
+                                detector_backend=str(request.detector_backend.value),
+                                enforce_detection=request.enforce_detection,
+                                align=request.align,
+                                silent=request.silent
+                            )
+                        else:
+                            result = worker.analyze_face(
+                                img_bytes=img_bytes,
+                                actions=actions_list,
+                                model_name=str(request.model_name.value),
+                                detector_backend=str(request.detector_backend.value),
+                                enforce_detection=request.enforce_detection,
+                                align=request.align,
+                                silent=request.silent
+                            )
+                    else:
+                        # local or kafka fallback to local for batch
+                        result = LocalWorker().analyze_face(
+                            img_bytes=img_bytes,
+                            actions=actions_list,
+                            model_name=str(request.model_name.value),
+                            detector_backend=str(request.detector_backend.value),
+                            enforce_detection=request.enforce_detection,
+                            align=request.align,
+                            silent=request.silent
+                        )
+                    results.append(result)
+                return results
 
         results = retry_call(lambda: cb_analyze.call(_call), attempts=2)
 
@@ -828,7 +881,7 @@ async def batch_analyze_faces(
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         logger.error(f"Error in batch analysis: {e}")
-        raise HTTPException(status_code=500, detail=f"Batch analysis failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Batch analysis failed")
 
 @app.post("/secure/verify", response_model=VerifyResponse)
 async def secure_verify(payload: SecureVerifyRequest, current_user: User = Depends(require_jwt_or_api_key([Role.OPERATOR, Role.ADMIN]))):
