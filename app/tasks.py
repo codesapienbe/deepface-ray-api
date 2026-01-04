@@ -26,16 +26,58 @@ celery_app = Celery("deepface", broker=CELERY_BROKER_URL, backend=CELERY_RESULT_
 celery_app.conf.task_always_eager = os.getenv("CELERY_EAGER", "true").lower() == "true"
 celery_app.conf.task_ignore_result = False
 
-# Simple in-memory task registry
+# Simple in-memory task registry with TTL and size limits
 _TASKS: Dict[str, Dict[str, Any]] = {}
 _TASKS_LOCK = RLock()
+
+# Task registry configuration
+_TASK_TTL_SECONDS = int(os.getenv("TASK_TTL_SECONDS", "3600"))  # 1 hour default
+_TASK_MAX_ENTRIES = int(os.getenv("TASK_MAX_ENTRIES", "10000"))  # Max 10k tasks
+_TASK_CLEANUP_INTERVAL = 300  # Cleanup every 5 minutes
+_LAST_CLEANUP_TS: float = 0.0
 
 
 def _now_ts() -> float:
 	return time.time()
 
 
+def _cleanup_expired_tasks() -> None:
+	"""Remove expired tasks and enforce max size limit."""
+	global _LAST_CLEANUP_TS
+	now = _now_ts()
+
+	# Only run cleanup periodically to avoid overhead
+	if now - _LAST_CLEANUP_TS < _TASK_CLEANUP_INTERVAL:
+		return
+
+	with _TASKS_LOCK:
+		_LAST_CLEANUP_TS = now
+
+		# Remove expired tasks
+		expired_keys = [
+			task_id for task_id, entry in _TASKS.items()
+			if now - entry.get("created_at", 0) > _TASK_TTL_SECONDS
+		]
+		for key in expired_keys:
+			del _TASKS[key]
+
+		if expired_keys:
+			logger.debug(f"Cleaned up {len(expired_keys)} expired tasks")
+
+		# If still over limit, remove oldest tasks
+		if len(_TASKS) > _TASK_MAX_ENTRIES:
+			sorted_tasks = sorted(
+				_TASKS.items(),
+				key=lambda x: x[1].get("created_at", 0)
+			)
+			to_remove = len(_TASKS) - _TASK_MAX_ENTRIES
+			for task_id, _ in sorted_tasks[:to_remove]:
+				del _TASKS[task_id]
+			logger.debug(f"Evicted {to_remove} oldest tasks due to size limit")
+
+
 def register_ray_ref(kind: str, ref: "ray.ObjectRef") -> str:
+	_cleanup_expired_tasks()  # Periodic cleanup
 	task_id = f"ray-{uuid.uuid4()}"
 	with _TASKS_LOCK:
 		_TASKS[task_id] = {
@@ -50,6 +92,7 @@ def register_ray_ref(kind: str, ref: "ray.ObjectRef") -> str:
 
 
 def register_celery_task(kind: str, celery_task_id: str) -> str:
+	_cleanup_expired_tasks()  # Periodic cleanup
 	task_id = f"celery-{celery_task_id}"
 	with _TASKS_LOCK:
 		_TASKS[task_id] = {
@@ -64,6 +107,7 @@ def register_celery_task(kind: str, celery_task_id: str) -> str:
 
 
 def register_local_result(kind: str, result: Any) -> str:
+	_cleanup_expired_tasks()  # Periodic cleanup
 	task_id = f"local-{uuid.uuid4()}"
 	with _TASKS_LOCK:
 		_TASKS[task_id] = {
@@ -136,6 +180,7 @@ def _get_kafka_consumer():
 
 
 def register_kafka_task(kind: str, task_id: str) -> str:
+	_cleanup_expired_tasks()  # Periodic cleanup
 	with _TASKS_LOCK:
 		_TASKS[task_id] = {
 			"kind": kind,
