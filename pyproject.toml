@@ -14,7 +14,7 @@ dependencies = [
   "tensorflow==2.15.0; sys_platform != 'darwin' or platform_machine != 'arm64'",
   "opencv-python-headless==4.8.1.78",
   "pillow==10.1.0",
-  "requests==2.32.3",
+  "requests==2.33.0",
   "python-multipart==0.0.6",
   "clamd==1.0.2",
   "numpy==1.24.3",
